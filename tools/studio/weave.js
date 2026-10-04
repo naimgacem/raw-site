@@ -16,238 +16,326 @@ function rng(seed) {
 }
 
 /* ------------------------------------------------------------- the arms */
-// Three arms rise from below: plaited tight where they're thick, the plait shrinking with them,
-// and near the top they let go and curl like the arms in the RAW logo. Rebuilt every frame.
+// Three arms rise from below, plaited tight while they're thick, the plait shrinking with them.
+// Near the top they let go and curl like the arms in the RAW logo, suckers on the inside of the curl.
+// Rebuilt every frame from smooth functions of the loop phase, so the loop has no seam.
 const A = {
   bottom: -4.8, // where the arms enter, below the frame
   split: 0.55, // height where the plait lets go
   r0: 0.36, // radius at the bottom
-  tipLen: 2.6, // length of each free tip
-  seg: 760, // samples per arm
-  ring: 44,
-  braidShare: 0.68, // part of each arm's samples spent in the plait
+  seg: 820, // samples per arm
+  ring: 52,
+  braidShare: 0.68, // share of each arm spent in the plait
 };
-const RATIO = 0.356; // arm radius ÷ plait width that keeps three strands just touching (measured)
+const RATIO = 0.356; // arm radius ÷ plait width that keeps three strands touching (measured)
 const ZRATIO = 0.5625; // over/under depth ÷ width (a flat plait)
 const PER_W = 4.25; // repeat length ÷ width
-
-const radiusAt = (u) => A.r0 * Math.pow(1 - u, 0.72) * 0.97 + 0.005;
-
-// skin relief that belongs to the arm (material coordinates), so it never swims
-function makeBumps(seed, n, amp) {
-  const r = rng(seed);
-  const terms = Array.from({ length: n }, (_, i) => [3 + r() * (20 + i * 9), (1 + Math.floor(r() * 3)) * (r() < 0.5 ? -1 : 1), r() * TAU, (amp * (0.4 + 0.6 * r())) / Math.sqrt(i + 1)]);
-  return (s, t) => {
-    let v = 0;
-    for (const [a, b, ph, w] of terms) v += w * Math.sin(a * s + b * t + ph);
-    return v;
-  };
-}
+// each free tip: outward direction, how far it curls, length
+const TIP = [
+  { spread: Math.PI - 0.55, curl: 3.4, len: 2.5 },
+  { spread: 0.45, curl: 3.6, len: 2.3 },
+  { spread: -1.0, curl: 2.7, len: 3.0 },
+];
+const radiusAt = (u) => A.r0 * Math.pow(1 - u, 0.72) * 0.97 + 0.004;
+const smooth = (x, a, b) => THREE.MathUtils.smoothstep(x, a, b);
 
 const ROT = new THREE.Quaternion();
-function rotateAbout(v, axis, angle) {
-  return v.applyQuaternion(ROT.setFromAxisAngle(axis, angle));
-}
+const rotateAbout = (v, axis, angle) => v.applyQuaternion(ROT.setFromAxisAngle(axis, angle));
+const signedAngle = (from, to, axis) => Math.atan2(V().crossVectors(from, to).dot(axis), from.dot(to));
 
-// centre line, oral direction and radius of every sample of arm k at loop phase τ
 function armPath(k, phase) {
   const a = phase * TAU;
-  const N = A.seg;
-  const nb = Math.round(N * A.braidShare);
-  const pts = [], oral = [], rad = [], tex = [];
-  const up = V(0, 1, 0);
+  const N = A.seg, nb = Math.round(N * A.braidShare);
+  const pts = [], rad = [];
   const axis = (y) => {
-    const g = THREE.MathUtils.smoothstep(y, A.bottom, A.split + 1.5);
+    const g = smooth(y, A.bottom, A.split + 1.5); // the base is anchored, the top sways
     return V(0.18 * g * Math.sin(0.9 * y - a + 0.5), y, 0.12 * g * Math.sin(0.7 * y - a + 2.0));
   };
 
-  // 1) the plait: phase accumulates faster as the arms thin, so it stays tight to the end
+  // 1) the plait: the twist tightens as the arms thin, so it stays snug to the end
   let p = 0;
-  let splitOffset = V();
+  const dy = (A.split - A.bottom) / nb;
   for (let i = 0; i <= nb; i++) {
-    const u = (i / nb) * A.braidShare;
-    const y = A.bottom + (A.split - A.bottom) * (i / nb);
-    const r = radiusAt(u);
+    const r = radiusAt((i / nb) * A.braidShare);
     const w = r / RATIO;
-    if (i > 0) p += (TAU / (PER_W * w)) * ((A.split - A.bottom) / nb);
+    if (i > 0) p += (TAU / (PER_W * w)) * dy;
     const pk = p + (TAU * k) / 3;
-    const off = V(w * Math.sin(pk), 0, w * ZRATIO * Math.sin(2 * pk));
-    pts.push(axis(y).add(off));
+    pts.push(axis(A.bottom + dy * i).add(V(w * Math.sin(pk), 0, w * ZRATIO * Math.sin(2 * pk))));
     rad.push(r);
-    oral.push(null); // filled below once tangents are known
-    if (i === nb) splitOffset = off;
   }
 
-  // 2) the free tip: march along a curl in the plane of "up" and this arm's outward direction
-  const base = pts[nb].clone();
-  // left-forward, right-forward, and one reaching up and back to the right — each curl faces the camera
-  const spread = [Math.PI - 0.55, 0.45, -1.0][k] + 0.18 * Math.sin(a + k * 2.09);
+  // 2) the free tip: the heading leaves the plait in the plait's own direction, then turns into a curl
+  const t = TIP[k];
+  const spread = t.spread + 0.18 * Math.sin(a + k * 2.09);
   const out = V(Math.cos(spread), 0, Math.sin(spread));
-  const curl = [3.4, 3.6, 2.7][k] + 0.85 * Math.sin(a + k * 2.09 + 0.6);
-  const tipLen = [2.5, 2.3, 3.0][k];
-  const lift = 0.35 + 0.15 * Math.sin(a + k); // tips lean outward a little before curling
-  let h = 0, rr = 0;
-  const nt = N - nb;
-  const ds = tipLen / nt;
+  const up = V(0, 1, 0);
+  const curl = t.curl + 0.85 * Math.sin(a + k * 2.09 + 0.6);
+  const lift = 0.35 + 0.15 * Math.sin(a + k);
+  const h0 = V().subVectors(pts[nb], pts[nb - 1]).normalize();
+  const nt = N - nb, ds = t.len / nt;
+  const pos = pts[nb].clone(), head = V(), goal = V();
   for (let i = 1; i <= nt; i++) {
     const v = i / nt;
     const th = lift * Math.sin(Math.min(1, v * 3) * Math.PI * 0.5) + curl * Math.pow(v, 1.7);
-    h += Math.cos(th) * ds;
-    rr += Math.sin(th) * ds;
-    const u = A.braidShare + (1 - A.braidShare) * v;
-    // the braid offset eases toward the arm's own outward line as it frees itself
-    const ease = THREE.MathUtils.smoothstep(v, 0, 0.35);
-    const pos = base.clone().addScaledVector(up, h).addScaledVector(out, rr).addScaledVector(splitOffset, -0.35 * ease);
-    pts.push(pos);
-    rad.push(radiusAt(u));
-    // inside of the curl: where the suckers face
-    oral.push(V().addScaledVector(up, -Math.sin(th)).addScaledVector(out, Math.cos(th)).normalize());
+    goal.copy(up).multiplyScalar(Math.cos(th)).addScaledVector(out, Math.sin(th));
+    head.copy(h0).lerp(goal, smooth(v, 0, 0.2)).normalize();
+    pos.addScaledVector(head, ds);
+    pts.push(pos.clone());
+    rad.push(radiusAt(A.braidShare + (1 - A.braidShare) * v));
   }
 
-  // tangents + a continuous oral direction (toward the viewer in the plait, inside the curl at the tip)
+  // tangents, then a rotation-minimising frame (double reflection) so the skin never twists by itself
   const T = pts.map((_, i) => V().subVectors(pts[Math.min(i + 1, N)], pts[Math.max(i - 1, 0)]).normalize());
+  const R = [V(0, 0, 1).addScaledVector(T[0], -T[0].z).normalize()];
+  for (let i = 0; i < N; i++) {
+    const v1 = V().subVectors(pts[i + 1], pts[i]);
+    const c1 = v1.dot(v1);
+    const rL = R[i].clone().addScaledVector(v1, (-2 / c1) * v1.dot(R[i]));
+    const tL = T[i].clone().addScaledVector(v1, (-2 / c1) * v1.dot(T[i]));
+    const v2 = V().subVectors(T[i + 1], tL);
+    const c2 = v2.dot(v2);
+    R.push((c2 < 1e-12 ? rL : rL.addScaledVector(v2, (-2 / c2) * v2.dot(rL))).normalize());
+  }
+
+  // where the sucker side faces: inward/back inside the plait (arms grip each other, hidden),
+  // the inside of the curl on the free tip. Turned smoothly, never snapped.
   const Z = V(0, 0, 1);
-  let len = 0;
+  const ang = new Float64Array(N + 1);
+  let lastIn = null;
   for (let i = 0; i <= N; i++) {
-    if (i > 0) len += pts[i].distanceTo(pts[i - 1]) / Math.max(rad[i], 0.05);
-    tex.push(len);
-    const z = Z.clone().addScaledVector(T[i], -T[i].dot(Z)).normalize();
-    const twist = 0.8 * Math.sin(i * 0.011 + k * 2.1);
-    rotateAbout(z, T[i], twist);
-    if (i <= nb) oral[i] = z;
-    else {
-      const v = (i - nb) / nt;
-      const blend = THREE.MathUtils.smoothstep(v, 0, 0.22);
-      const o = oral[i].clone().addScaledVector(T[i], -oral[i].dot(T[i])).normalize();
-      oral[i] = z.lerp(o, blend).normalize();
+    const back = Z.clone().addScaledVector(T[i], -T[i].dot(Z)).normalize().negate();
+    let ab = signedAngle(R[i], back, T[i]);
+    if (i > nb) {
+      const kv = V().subVectors(T[Math.min(i + 1, N)], T[i - 1]);
+      kv.addScaledVector(T[i], -kv.dot(T[i]));
+      if (kv.lengthSq() > 1e-10) {
+        lastIn = kv.normalize();
+        const front = Z.clone().addScaledVector(T[i], -T[i].dot(Z));
+        if (front.lengthSq() > 1e-6) lastIn.addScaledVector(front.normalize(), 0.85).normalize();
+      }
+      if (lastIn) {
+        let at = signedAngle(R[i], lastIn, T[i]);
+        at += TAU * Math.round((ab - at) / TAU);
+        ab += (at - ab) * smooth((i - nb) / nt, 0.06, 0.4);
+      }
+    }
+    if (i > 0) ab += TAU * Math.round((ang[i - 1] - ab) / TAU); // unwrap
+    ang[i] = ab;
+  }
+  // heavy smoothing: the arm turns gradually, like real muscle
+  for (let pass = 0; pass < 3; pass++) {
+    const src = ang.slice();
+    for (let i = 0; i <= N; i++) {
+      let s = 0, c = 0;
+      for (let j = -24; j <= 24; j++) {
+        const q = Math.min(N, Math.max(0, i + j));
+        s += src[q];
+        c++;
+      }
+      ang[i] = s / c;
     }
   }
-  return { pts, T, oral, rad, tex };
+  const O = R.map((r, i) => rotateAbout(r.clone(), T[i], ang[i]));
+  return { pts, T, O, rad, nb };
 }
+
+// soft contact: where two arms press together, both flatten against a shared plane
+function contactPlanes(paths, k, i) {
+  const me = paths[k];
+  const C = me.pts[i], Ra = me.rad[i];
+  const planes = [];
+  if (i > me.nb + 40) return planes;
+  for (let b = 0; b < 3; b++) {
+    if (b === k) continue;
+    const o = paths[b];
+    let best = 1e9, bi = -1;
+    for (let m = Math.max(0, i - 44); m <= Math.min(o.nb + 40, i + 44); m++) {
+      const d = C.distanceToSquared(o.pts[m]);
+      if (d < best) { best = d; bi = m; }
+    }
+    if (bi < 0) continue;
+    const Rb = o.rad[bi];
+    const d = Math.sqrt(best);
+    if (d >= (Ra + Rb) * 1.02 || d < 1e-6) continue;
+    const n = V().subVectors(o.pts[bi], C).divideScalar(d);
+    planes.push({ n, t0: (d * Ra) / (Ra + Rb), soft: 0.35 * Math.min(Ra, Rb) });
+  }
+  return planes;
+}
+
+const smin0 = (e, s) => {
+  // smooth min(e, 0): rounds the edge of the flattened contact patch
+  const h = Math.min(1, Math.max(0, 0.5 - (0.5 * e) / s));
+  return e * h - s * h * (1 - h);
+};
 
 function armMesh(k) {
   const N = A.seg, R = A.ring;
   const g = new THREE.BufferGeometry();
-  g.setAttribute("position", new THREE.BufferAttribute(new Float32Array((N + 1) * (R + 1) * 3), 3));
-  g.setAttribute("uv", new THREE.BufferAttribute(new Float32Array((N + 1) * (R + 1) * 2), 2));
+  const verts = (N + 1) * (R + 1);
+  g.setAttribute("position", new THREE.BufferAttribute(new Float32Array(verts * 3), 3));
+  g.setAttribute("uv", new THREE.BufferAttribute(new Float32Array(verts * 2), 2));
+  g.setAttribute("aThin", new THREE.BufferAttribute(new Float32Array(verts), 1));
   const idx = [];
   for (let i = 0; i < N; i++) {
     for (let j = 0; j < R; j++) {
       const a = i * (R + 1) + j, b = a + R + 1;
-      idx.push(a, b, a + 1, b, b + 1, a + 1);
+      idx.push(a, a + 1, b, b, a + 1, b + 1); // wound so the normals face out
     }
   }
   g.setIndex(idx);
-  return { g, big: makeBumps(11 + k * 7, 8, 0.028), fine: makeBumps(91 + k * 13, 12, 0.008) };
+  return { g, k, tex: null };
 }
 
-function updateArm(arm, path) {
-  const { g, big, fine } = arm;
+// skin coordinates along each arm, fixed once (scaled by thickness so the pattern shrinks toward the tip)
+function restTex(path) {
+  const tex = [0];
+  for (let i = 1; i < path.pts.length; i++) tex.push(tex[i - 1] + path.pts[i].distanceTo(path.pts[i - 1]) / Math.max(path.rad[i], 0.04));
+  return tex;
+}
+
+function updateArm(arm, paths) {
+  const { g, k } = arm;
+  const path = paths[k];
   const N = A.seg, R = A.ring;
-  const pos = g.attributes.position.array, uv = g.attributes.uv.array;
-  const O = V(), Q = V(), dir = V();
+  const pos = g.attributes.position.array, uv = g.attributes.uv.array, thin = g.attributes.aThin.array;
+  const O = V(), Q = V(), dir = V(), P = V();
   for (let i = 0; i <= N; i++) {
     const C = path.pts[i], T = path.T[i];
-    O.copy(path.oral[i]);
+    O.copy(path.O[i]);
     Q.crossVectors(T, O);
-    const s = path.tex[i] * 0.12;
+    const r = path.rad[i] * (1 + 0.022 * Math.sin(arm.tex[i] * 0.21 + k * 1.7)); // slow muscle swell
+    const planes = contactPlanes(paths, k, i);
     for (let j = 0; j <= R; j++) {
       const th = (j / R) * TAU;
       dir.copy(O).multiplyScalar(Math.cos(th)).addScaledVector(Q, Math.sin(th));
-      const oralness = Math.pow(Math.max(0, Math.cos(th)), 3);
-      const rr = path.rad[i] * (1 - 0.14 * oralness + big(s, th) + fine(s * 3, th) * (1 - oralness));
+      const oral = Math.pow(Math.max(0, Math.cos(th)), 2);
+      P.copy(C).addScaledVector(dir, r * (1 - 0.1 * oral));
+      for (const pl of planes) {
+        const e = P.clone().sub(C).dot(pl.n) - pl.t0;
+        P.addScaledVector(pl.n, smin0(e, pl.soft) - e);
+      }
       const o = (i * (R + 1) + j) * 3;
-      pos[o] = C.x + dir.x * rr; pos[o + 1] = C.y + dir.y * rr; pos[o + 2] = C.z + dir.z * rr;
+      pos[o] = P.x; pos[o + 1] = P.y; pos[o + 2] = P.z;
       const t = (i * (R + 1) + j) * 2;
-      uv[t] = path.tex[i] / 9; // skin pattern scales with the arm
+      uv[t] = arm.tex[i] * 0.09;
       uv[t + 1] = j / R;
+      thin[i * (R + 1) + j] = smooth(path.rad[i], 0.13, 0.02);
     }
   }
   g.attributes.position.needsUpdate = true;
   g.attributes.uv.needsUpdate = true;
+  g.attributes.aThin.needsUpdate = true;
   g.computeVertexNormals();
   g.computeBoundingSphere();
 }
 
-// suckers: fixed places along each arm (in arm coordinates), spaced by the arm's thickness
-function suckerSlots() {
+// suckers: two staggered rows down the sucker side, spaced by the arm's thickness. Fixed in arm
+// coordinates (fractional sample index), so they ride with the skin.
+function suckerSlots(rest) {
   const slots = [];
-  for (let k = 0; k < 3; k++) {
-    let acc = 0, n = 0;
-    for (let i = 1; i <= A.seg; i++) {
-      const u = i / A.seg;
-      acc += 1 / (A.seg * radiusAt(u) * 0.11); // ~ one sucker per 0.55 radius of arm
-      while (acc >= 1) {
-        acc -= 1;
-        if (u > 0.985) continue;
-        slots.push({ k, i, side: n++ % 2 ? 1 : -1 });
-      }
+  rest.forEach((path, k) => {
+    let next = path.nb - 30, side = 1;
+    let f = next;
+    while (f < A.seg - 3) {
+      const i = Math.floor(f);
+      slots.push({ k, f, side });
+      side = -side;
+      // half a sucker pitch per slot (rows alternate), pitch ≈ 0.62 × radius of arc length
+      const step = (0.43 * path.rad[i]) / path.pts[i + 1].distanceTo(path.pts[i]);
+      f += Math.max(step, 0.6);
     }
-  }
+  });
   return slots;
 }
 
 function suckerGeometry() {
-  // a raised cup with a small pit (lathe profile, radius 1, axis +y)
+  // octopus sucker: a short cylinder with a broad, slightly domed rim and a small central opening
   const prof = [
-    [0.0, 0.2], [0.12, 0.2], [0.24, 0.24], [0.34, 0.33], [0.5, 0.38], [0.7, 0.37],
-    [0.86, 0.32], [0.97, 0.2], [1.02, 0.04], [1.05, -0.12], [1.2, -0.3],
-  ].map(([x, y]) => new THREE.Vector2(x, y));
-  const g = new THREE.LatheGeometry(prof, 32);
+    [0.0, 0.02], [0.08, 0.02], [0.13, 0.1], [0.19, 0.18], [0.3, 0.225], [0.55, 0.245],
+    [0.75, 0.235], [0.9, 0.2], [0.98, 0.12], [1.0, 0.0], [0.99, -0.14], [1.08, -0.26], [1.25, -0.34],
+  ].reverse().map(([x, y]) => new THREE.Vector2(x, y)); // base → rim → opening, so normals face out
+  const g = new THREE.LatheGeometry(prof, 36);
   const col = new Float32Array(g.attributes.position.count * 3);
   for (let i = 0; i < g.attributes.position.count; i++) {
-    const x = g.attributes.position.getX(i), z = g.attributes.position.getZ(i);
-    const c = THREE.MathUtils.smoothstep(Math.sqrt(x * x + z * z), 0.14, 0.4);
-    col[i * 3] = 0.5 + 0.5 * c;
-    col[i * 3 + 1] = 0.28 + 0.62 * c;
-    col[i * 3 + 2] = 0.42 + 0.5 * c;
+    const x = g.attributes.position.getX(i), y = g.attributes.position.getY(i), z = g.attributes.position.getZ(i);
+    const rr = Math.sqrt(x * x + z * z);
+    const rim = smooth(rr, 0.1, 0.32); // dark opening → pale rim
+    const base = smooth(-y, 0.0, 0.3); // the foot takes the skin's colour
+    col[i * 3] = (0.42 + 0.58 * rim) * (1 - 0.35 * base);
+    col[i * 3 + 1] = (0.22 + 0.62 * rim) * (1 - 0.35 * base);
+    col[i * 3 + 2] = (0.36 + 0.56 * rim) * (1 - 0.3 * base);
   }
   g.setAttribute("color", new THREE.BufferAttribute(col, 3));
   return g;
 }
 
 /* ---------------------------------------------------------------- skin */
-// tileable mottled skin: dark violet-black with chromatophore speckles and soft blotches
+// Tileable along the arm (x) and around it (y; y≈0 and y≈1 are the sucker side).
+// Mottled plum on top, pale on the underside, fine creases running across the arm, a few pigment dots.
 function skinTextures() {
-  const w = 1024, h = 256;
+  const w = 1024, h = 512;
   const r = rng(5);
-  // tileable: every wave has whole-number frequencies across the texture
-  const waves = Array.from({ length: 34 }, (_, i) => {
-    const fu = 1 + Math.floor(r() * (6 + i * 1.6)), fv = Math.floor(r() * (3 + i * 0.5)) * (r() < 0.5 ? -1 : 1);
-    return [fu, fv, r() * TAU, 1 / (1 + i * 0.35)];
-  });
-  const height = new Float32Array(w * h);
-  let lo = 1e9, hi = -1e9;
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
+  // periodic smooth noise from a handful of waves with whole-number frequencies (tiles, no lattice)
+  const field = (count, maxU, maxV, seed) => {
+    const rr = rng(seed);
+    const waves = Array.from({ length: count }, (_, i) => [1 + Math.floor(rr() * maxU), Math.floor(rr() * (maxV * 2 + 1)) - maxV, rr() * TAU, 1 / (1 + i * 0.3)]);
+    return (x, y) => {
       let v = 0;
-      for (const [fu, fv, ph, a] of waves) v += a * Math.sin(TAU * (fu * x / w + fv * y / h) + ph);
-      height[y * w + x] = v;
-      lo = Math.min(lo, v); hi = Math.max(hi, v);
+      for (const [fu, fv, ph, a] of waves) v += a * Math.sin(TAU * (fu * x + fv * y) + ph);
+      return v;
+    };
+  };
+  const mottle = field(16, 7, 3, 21);
+  const warp = field(6, 4, 2, 33);
+  const env = field(5, 5, 1, 44);
+  const height = new Float32Array(w * h);
+  const shade = new Float32Array(w * h);
+  for (let py = 0; py < h; py++) {
+    for (let px = 0; px < w; px++) {
+      const x = px / w, y = py / h;
+      // creases: rings around the arm, bent a little and fading in and out so they never read as stripes
+      const bend = 0.012 * warp(x, y);
+      const fade = 0.5 + 0.5 * Math.tanh(1.5 * env(x, y));
+      const c1 = Math.sin(TAU * (19 * (x + bend) + 0.15 * Math.sin(TAU * y)));
+      const c2 = Math.sin(TAU * (31 * (x + bend * 1.6) + 0.3) + 1.7);
+      const crease = (Math.pow(Math.abs(c1), 6) * 0.7 + Math.pow(Math.abs(c2), 8) * 0.4) * fade;
+      height[py * w + px] = -crease;
+      shade[py * w + px] = crease;
     }
   }
-  for (let i = 0; i < height.length; i++) height[i] = (height[i] - lo) / (hi - lo);
   const color = document.createElement("canvas");
   color.width = w; color.height = h;
   const cx = color.getContext("2d");
   const img = cx.createImageData(w, h);
-  for (let i = 0; i < w * h; i++) {
-    const t = Math.pow(height[i], 1.4);
-    const y = Math.floor(i / w) / h;
-    const under = THREE.MathUtils.smoothstep(Math.cos(y * TAU), 0.35, 0.95); // the underside is paler
-    img.data[i * 4] = 26 + 70 * t + 120 * under;
-    img.data[i * 4 + 1] = 10 + 24 * t + 72 * under;
-    img.data[i * 4 + 2] = 38 + 74 * t + 108 * under;
-    img.data[i * 4 + 3] = 255;
+  for (let py = 0; py < h; py++) {
+    const y = py / h;
+    const under = smooth(Math.cos(y * TAU), 0.2, 0.9); // the sucker side is pale
+    for (let px = 0; px < w; px++) {
+      const x = px / w;
+      const m = 0.5 + 0.26 * mottle(x, y);
+      const warm = Math.max(0, 0.12 * warp(x * 2, y));
+      const i = (py * w + px) * 4;
+      // top: deep plum-violet, mottled. underside: pale lilac-pink.
+      let R = 20 + 48 * m + 60 * warm, G = 7 + 14 * m + 6 * warm, B = 28 + 50 * m + 10 * warm;
+      R += (168 - R) * under; G += (126 - G) * under; B += (178 - B) * under;
+      const groove = 1 - 0.14 * shade[py * w + px];
+      img.data[i] = R * groove;
+      img.data[i + 1] = G * groove;
+      img.data[i + 2] = B * groove;
+      img.data[i + 3] = 255;
+    }
   }
   cx.putImageData(img, 0, 0);
-  // chromatophores: small soft dots, drawn wrapped so the texture still tiles
-  for (let k = 0; k < 1400; k++) {
-    const x = r() * w, y = r() * h, rad = 1.2 + 2.6 * r() * r();
-    const dark = r() < 0.55;
+  // chromatophores: tiny soft dots on the top side only, drawn wrapped so the texture still tiles
+  for (let n = 0; n < 2600; n++) {
+    const x = r() * w, y = r() * h;
+    if (Math.cos((y / h) * TAU) > 0.15) continue;
+    const rad = 0.8 + 1.8 * r() * r();
+    const dark = r() < 0.7;
     for (const [dx, dy] of [[0, 0], [w, 0], [-w, 0], [0, h], [0, -h]]) {
       const g = cx.createRadialGradient(x + dx, y + dy, 0, x + dx, y + dy, rad);
-      g.addColorStop(0, dark ? "rgba(10,2,16,0.55)" : "rgba(170,110,210,0.35)");
+      g.addColorStop(0, dark ? "rgba(14,3,20,0.5)" : "rgba(150,70,170,0.35)");
       g.addColorStop(1, "rgba(0,0,0,0)");
       cx.fillStyle = g;
       cx.fillRect(x + dx - rad, y + dy - rad, rad * 2, rad * 2);
@@ -260,7 +348,7 @@ function skinTextures() {
   const H = (x, y) => height[((y + h) % h) * w + ((x + w) % w)];
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
-      const dx = (H(x + 1, y) - H(x - 1, y)) * 6, dy = (H(x, y + 1) - H(x, y - 1)) * 6;
+      const dx = (H(x + 1, y) - H(x - 1, y)) * 1.1, dy = (H(x, y + 1) - H(x, y - 1)) * 1.1;
       const l = Math.hypot(dx, dy, 1);
       const i = (y * w + x) * 4;
       nimg.data[i] = ((-dx / l) * 0.5 + 0.5) * 255;
@@ -275,7 +363,6 @@ function skinTextures() {
   const normalMap = new THREE.CanvasTexture(nrm);
   for (const t of [map, normalMap]) {
     t.wrapS = t.wrapT = THREE.RepeatWrapping;
-    t.repeat.set(1, 1);
     t.anisotropy = 8;
   }
   return { map, normalMap };
@@ -412,33 +499,48 @@ export function init(width, height) {
 
   const { map, normalMap } = skinTextures();
   const skin = new THREE.MeshPhysicalMaterial({
-    color: 0xffffff, map, normalMap, normalScale: new THREE.Vector2(0.4, 0.4),
-    roughness: 0.55, metalness: 0.0, clearcoat: 0.75, clearcoatRoughness: 0.16,
-    sheen: 0.35, sheenRoughness: 0.5, sheenColor: new THREE.Color(0x6a2bb0), envMapIntensity: 1.0,
+    color: 0xffffff, map, normalMap, normalScale: new THREE.Vector2(0.5, 0.5),
+    roughness: 0.6, metalness: 0.0, specularIntensity: 0.5, clearcoat: 0.65, clearcoatRoughness: 0.3,
+    sheen: 0.12, sheenRoughness: 0.6, sheenColor: new THREE.Color(0x7a3ab8), envMapIntensity: 0.4,
   });
+  // thin flesh lets light through: a soft glow at the edges that grows as the arm thins
+  skin.onBeforeCompile = (sh) => {
+    sh.uniforms.uTrans = { value: new THREE.Color(0.5, 0.1, 0.42) };
+    sh.vertexShader = sh.vertexShader
+      .replace("#include <common>", "#include <common>\nattribute float aThin;\nvarying float vThin;")
+      .replace("#include <begin_vertex>", "#include <begin_vertex>\nvThin = aThin;");
+    sh.fragmentShader = sh.fragmentShader
+      .replace("#include <common>", "#include <common>\nuniform vec3 uTrans;\nvarying float vThin;")
+      .replace("#include <lights_fragment_end>", "#include <lights_fragment_end>\n{ float f = pow(1.0 - saturate(dot(normal, geometryViewDir)), 2.2); totalEmissiveRadiance += uTrans * f * (0.06 + 0.75 * vThin) * diffuseColor.rgb * 2.4; }");
+  };
+  skin.customProgramCacheKey = () => "weave-skin-v2";
+  // the rest pose fixes the skin coordinates and where the suckers sit
+  const rest = [0, 1, 2].map((k) => armPath(k, 0));
   const arms = [0, 1, 2].map((k) => {
     const a = armMesh(k);
+    a.tex = restTex(rest[k]);
     group.add(new THREE.Mesh(a.g, skin));
     return a;
   });
 
   const cupMat = new THREE.MeshPhysicalMaterial({
-    color: 0xf0e0ea, vertexColors: true, roughness: 0.5, clearcoat: 0.6, clearcoatRoughness: 0.2, envMapIntensity: 1.0,
+    color: 0xf1e3ee, vertexColors: true, roughness: 0.46, clearcoat: 0.45, clearcoatRoughness: 0.25,
+    sheen: 0.4, sheenColor: new THREE.Color(0xe8c8ff), envMapIntensity: 0.8,
   });
-  const slots = suckerSlots();
+  const slots = suckerSlots(rest);
   const cups = new THREE.InstancedMesh(suckerGeometry(), cupMat, slots.length);
   group.add(cups);
 
   // lights: surface light from above, violet rims behind, a low deep fill
-  const key = new THREE.DirectionalLight(0xe8e0ff, 2.4);
+  const key = new THREE.DirectionalLight(0xece6ff, 2.3);
   key.position.set(1.5, 7, 4);
-  const rimL = new THREE.DirectionalLight(0xa050ff, 3.6);
+  const rimL = new THREE.DirectionalLight(0x9a5cff, 3.0);
   rimL.position.set(-5, 2.5, -4);
-  const rimR = new THREE.DirectionalLight(0xdcc8ff, 2.6);
+  const rimR = new THREE.DirectionalLight(0xdcccff, 2.2);
   rimR.position.set(5, 4, -3);
   const fill = new THREE.DirectionalLight(0x2a0a55, 0.7);
   fill.position.set(-1, -4, 5);
-  const glint = new THREE.PointLight(0xf3e9ff, 6, 9, 2);
+  const glint = new THREE.PointLight(0xf3e9ff, 2.5, 9, 2);
   glint.position.set(2.2, 1.2, 4.2);
   scene.add(key, rimL, rimR, fill, glint);
 
@@ -512,26 +614,37 @@ export function frame(phase, { samples = 32, aperture = 0.3, quality = 0.92, see
   const { renderer, scene, camera, bg, group, arms, cups, slots, snow, bubbles, rtSample, rtAccum, rtA, rtB, quad, quadScene, quadCam, M, width, height } = S;
   const a = phase * TAU;
 
-  const paths = arms.map((arm, k) => {
-    const path = armPath(k, phase);
-    updateArm(arm, path);
-    return path;
-  });
+  const paths = arms.map((_, k) => armPath(k, phase));
+  arms.forEach((arm) => updateArm(arm, paths));
   group.rotation.y = 0.1 * Math.sin(a);
 
-  // suckers ride on the inside of each arm, two staggered rows, pulsing in a slow wave
-  const m = new THREE.Matrix4(), q = new THREE.Quaternion(), up = V(0, 1, 0), sc = V(), n = V(), pp = V();
-  slots.forEach((slot, i) => {
+  // suckers ride on the sucker side in two staggered rows; any tucked inside a neighbouring arm hide
+  const m = new THREE.Matrix4(), q = new THREE.Quaternion(), up = V(0, 1, 0), sc = V();
+  const C = V(), T = V(), O = V(), n = V(), Sp = V();
+  slots.forEach((slot, idx) => {
     const P = paths[slot.k];
-    const T = P.T[slot.i];
-    n.copy(P.oral[slot.i]);
-    rotateAbout(n, T, slot.side * 0.42);
-    const r = P.rad[slot.i];
-    pp.copy(P.pts[slot.i]).addScaledVector(n, r * 0.9);
+    const i = Math.floor(slot.f), t = slot.f - i;
+    C.lerpVectors(P.pts[i], P.pts[i + 1], t);
+    T.lerpVectors(P.T[i], P.T[i + 1], t).normalize();
+    O.lerpVectors(P.O[i], P.O[i + 1], t);
+    O.addScaledVector(T, -O.dot(T)).normalize();
+    const r = P.rad[i] + (P.rad[i + 1] - P.rad[i]) * t;
+    n.copy(O);
+    rotateAbout(n, T, slot.side * 0.36);
+    Sp.copy(C).addScaledVector(n, r * 0.915);
+    // tucked against a neighbouring arm? shrink away smoothly (no popping between frames)
+    let clear = 1;
+    for (let b = 0; b < 3; b++) {
+      if (b === slot.k || i > paths[b].nb + 60) continue;
+      for (let j = Math.max(0, i - 50); j <= Math.min(A.seg, i + 50); j += 2) {
+        clear = Math.min(clear, smooth(Sp.distanceTo(paths[b].pts[j]) / paths[b].rad[j], 1.0, 1.3));
+      }
+    }
+    const size = r * 0.3 * clear * (1 + 0.04 * Math.sin(a * 2 - slot.f * 0.02));
     q.setFromUnitVectors(up, n);
-    sc.setScalar(r * 0.42 * (1 + 0.07 * Math.sin(a * 2 - slot.i * 0.02)));
-    m.compose(pp, q, sc);
-    cups.setMatrixAt(i, m);
+    sc.setScalar(Math.max(size, 1e-5)); // zero-size instances simply vanish
+    m.compose(Sp.addScaledVector(n, -size * 0.05), q, sc);
+    cups.setMatrixAt(idx, m);
   });
   cups.instanceMatrix.needsUpdate = true;
   cups.computeBoundingSphere();

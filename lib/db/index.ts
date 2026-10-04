@@ -50,13 +50,21 @@ export const NOT_CONNECTED = "The database isn't connected yet — add SUPABASE_
 
 let db: Db | null = null;
 
+/** Supabase URL + server key, under any of the names Supabase / Vercel's Supabase integration use. */
+export function supabaseEnv() {
+  const env = process.env;
+  const url = env.SUPABASE_URL || env.NEXT_PUBLIC_SUPABASE_URL || "";
+  const key = env.SUPABASE_SERVICE_ROLE_KEY || env.SUPABASE_SECRET_KEY || "";
+  return url && key ? { url, key } : null;
+}
+
 export async function getDb(): Promise<Db> {
   if (db) return db;
-  const { SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, VERCEL } = process.env;
-  if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
+  const sb = supabaseEnv();
+  if (sb) {
     const { supabaseDb } = await import("./supabase");
-    db = supabaseDb(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-  } else if (VERCEL) {
+    db = supabaseDb(sb.url, sb.key);
+  } else if (process.env.VERCEL) {
     const { noneDb } = await import("./none");
     db = noneDb();
   } else {

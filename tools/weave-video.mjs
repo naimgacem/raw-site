@@ -1,6 +1,7 @@
 // Renders "The Weave" — octopus arms plaiting a braid — behind the "We come to you" section.
 //   npm run weave-video                 full loop → public/media/weave-loop.mp4 + weave-poster.jpg
 //   npm run weave-video -- --preview    a few stills into tools/out/weave-*.jpg (fast)
+//   npm run weave-video -- --still      full-quality stills (add --sharp to switch the lens blur off and inspect the model)
 // Uses the graphics card (each frame is the average of many lens samples for real depth of field).
 import fs from "node:fs";
 import path from "node:path";
@@ -9,11 +10,13 @@ import { fileURLToPath } from "node:url";
 import { serve, launch } from "./chrome.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const preview = process.argv.includes("--preview");
+const still = process.argv.includes("--still");
+const sharp = process.argv.includes("--sharp");
+const preview = process.argv.includes("--preview") || still;
 const FPS = 30, SECONDS = 8, N = FPS * SECONDS;
-const SIZE = preview ? 640 : 1080; // rendered square, encoded smaller
+const SIZE = preview && !still ? 640 : 1080; // rendered square, encoded smaller
 const OUT_SIZE = 840;
-const SAMPLES = preview ? 24 : 40;
+const SAMPLES = preview && !still ? 24 : 40;
 const out = path.join(root, "tools", "out");
 const frames = path.join(out, "weave-frames");
 fs.mkdirSync(out, { recursive: true });
@@ -33,7 +36,7 @@ const info = await page.evaluate((s) => window.weave.init(s, s), SIZE);
 console.log("scene ready", info);
 
 const grab = async (phase, file) => {
-  const data = await page.evaluate((p, n) => window.weave.frame(p, { samples: n }), phase, SAMPLES);
+  const data = await page.evaluate((p, n, sh) => window.weave.frame(p, sh ? { samples: n, aperture: 0.002 } : { samples: n }), phase, SAMPLES, sharp);
   fs.writeFileSync(file, Buffer.from(data.split(",")[1], "base64"));
 };
 

@@ -18,7 +18,7 @@ export default function TheDeep({ paused = false, className = "" }: { paused?: b
     const canvas = canvasRef.current!;
     const host = canvas.parentElement!;
     const gl = canvas.getContext("webgl", { antialias: false, alpha: false, depth: false, stencil: false, powerPreference: "high-performance" });
-    if (!gl) return;
+    if (!gl || gl.isContextLost()) return; // no WebGL: the poster image behind stays
 
     const prog = gl.createProgram()!;
     for (const [type, src] of [[gl.VERTEX_SHADER, VERT], [gl.FRAGMENT_SHADER, FRAG]] as const) {
@@ -125,6 +125,10 @@ export default function TheDeep({ paused = false, className = "" }: { paused?: b
     };
     raf = requestAnimationFrame(frame);
 
+    // phones can drop the GPU context (memory pressure, too many tabs): fade back to the poster
+    const onLost = (e: Event) => { e.preventDefault(); cancelAnimationFrame(raf); canvas.style.opacity = "0"; };
+    canvas.addEventListener("webglcontextlost", onLost);
+
     return () => {
       cancelAnimationFrame(raf);
       ro.disconnect();
@@ -133,7 +137,12 @@ export default function TheDeep({ paused = false, className = "" }: { paused?: b
       host.removeEventListener("pointerdown", onDown);
       host.removeEventListener("touchmove", onTouch);
       window.removeEventListener("scroll", onScroll);
-      gl.getExtension("WEBGL_lose_context")?.loseContext();
+      canvas.removeEventListener("webglcontextlost", onLost);
+      gl.deleteBuffer(buf);
+      gl.deleteProgram(prog);
+      // free the GPU only once the canvas has really left the page — React re-runs effects on the
+      // same canvas in development, and a lost context can't be used again
+      setTimeout(() => { if (!canvas.isConnected) gl.getExtension("WEBGL_lose_context")?.loseContext(); }, 0);
     };
   }, []);
 

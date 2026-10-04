@@ -7,7 +7,7 @@ const enc = new TextEncoder();
 
 /** The signing key. Falls back to other server-only secrets so a fresh deploy needs one variable fewer. */
 export function sessionSecret(): string | null {
-  const s = process.env.ADMIN_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.ADMIN_PASSWORD;
+  const s = process.env.ADMIN_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || process.env.ADMIN_PASSWORD;
   if (s) return s;
   return process.env.NODE_ENV === "development" ? "raw-dev-only-secret" : null;
 }
