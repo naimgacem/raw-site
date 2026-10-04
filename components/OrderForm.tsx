@@ -2,14 +2,16 @@
 
 import { forwardRef, useEffect, useMemo, useState } from "react";
 import { useStore } from "./store";
+import { useCatalog } from "./catalog";
 import {
   BagIcon, BuildingIcon, CartIcon, CheckIcon, ChevronIcon, HomeIcon, InstagramIcon, MapPinIcon, PhoneIcon,
   ReceiptIcon, SignIcon, SpinnerIcon, StoreIcon, TagIcon, TruckIcon, UserIcon, WhatsAppIcon,
 } from "./Icons";
-import { WILAYAS, getWilaya, normalizePhone, type DeliveryType } from "@/lib/algeria";
-import { findCoupon, totals, type OrderItem } from "@/lib/order";
+import { normalizePhone } from "@/lib/algeria";
+import { totals, type OrderItem } from "@/lib/order";
 import { price, whatsappLink } from "@/lib/site";
 import { sendViaInstagram } from "@/lib/messages";
+import type { CouponInfo, DeliveryType } from "@/lib/types";
 
 // communes are fetched once, only when a form is on screen
 let communesCache: Promise<Record<string, [string, string][]>> | null = null;
@@ -30,15 +32,19 @@ const OrderForm = forwardRef<HTMLFormElement, { items: OrderItem[]; onOrdered?: 
   ref
 ) {
   const { notify } = useStore();
+  const cat = useCatalog();
+  const { settings } = cat;
   const [f, setF] = useState<Fields>(EMPTY);
   const [communes, setCommunes] = useState<Record<string, [string, string][]> | null>(null);
   const [couponInput, setCouponInput] = useState("");
-  const [coupon, setCoupon] = useState("");
+  const [coupon, setCoupon] = useState<CouponInfo | null>(null);
+  const [checking, setChecking] = useState(false);
   const [couponMsg, setCouponMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [errors, setErrors] = useState<Partial<Record<keyof Fields, string>>>({});
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState<Done | null>(null);
   const [failed, setFailed] = useState(false);
+  const [closed, setClosed] = useState(!settings.ordersOpen);
   const [hp, setHp] = useState(""); // honeypot
 
   // remember contact details on this device
@@ -50,21 +56,37 @@ const OrderForm = forwardRef<HTMLFormElement, { items: OrderItem[]; onOrdered?: 
     try { localStorage.setItem(SAVED, JSON.stringify(f)); } catch {}
   }, [f]);
 
-  const w = getWilaya(f.wilaya);
+  const w = cat.wilayas.find((x) => x.code === f.wilaya);
   useEffect(() => { if (w && w.desk === null && f.delivery === "desk") setF((x) => ({ ...x, delivery: "home" })); }, [w, f.delivery]);
 
-  const t = useMemo(() => totals(items, f.wilaya, f.delivery, coupon), [items, f.wilaya, f.delivery, coupon]);
+  const t = useMemo(() => totals(cat, items, f.wilaya, f.delivery, coupon), [cat, items, f.wilaya, f.delivery, coupon]);
   const set = (k: keyof Fields) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const v = e.target.value;
     setF((x) => ({ ...x, [k]: v, ...(k === "wilaya" ? { commune: "" } : {}) }));
     setErrors((er) => ({ ...er, [k]: undefined }));
   };
 
-  const applyCoupon = () => {
-    const c = findCoupon(couponInput);
-    if (!couponInput.trim()) return;
-    if (c) { setCoupon(c.code); setCouponMsg({ ok: true, text: `تم تطبيق الكود ${c.code} ✓` }); }
-    else { setCoupon(""); setCouponMsg({ ok: false, text: "كود التخفيض غير صالح" }); }
+  const applyCoupon = async () => {
+    const code = couponInput.trim().toUpperCase();
+    if (!code || checking) return;
+    setChecking(true);
+    try {
+      const r = await fetch(`/api/coupon?code=${encodeURIComponent(code)}`).then((x) => x.json());
+      if (r.ok) {
+        setCoupon(r.coupon);
+        const short = r.coupon.minOrder > t.subtotal;
+        setCouponMsg(short
+          ? { ok: false, text: `هذا الكود صالح ابتداءً من ${ltr(price(r.coupon.minOrder))}` }
+          : { ok: true, text: `تم تطبيق الكود ${r.coupon.code} ✓` });
+      } else {
+        setCoupon(null);
+        setCouponMsg({ ok: false, text: r.reason === "expired" ? "انتهت صلاحية هذا الكود" : r.reason === "used" ? "تم استنفاد هذا الكود" : "كود التخفيض غير صالح" });
+      }
+    } catch {
+      setCouponMsg({ ok: false, text: "تعذر التحقق من الكود، حاول مرة أخرى" });
+    } finally {
+      setChecking(false);
+    }
   };
 
   const validate = () => {
@@ -85,9 +107,10 @@ const OrderForm = forwardRef<HTMLFormElement, { items: OrderItem[]; onOrdered?: 
       const r = await fetch("/api/order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ items, coupon, website: hp, customer: { ...f, phone: normalizePhone(f.phone) } }),
+        body: JSON.stringify({ items, coupon: coupon?.code ?? "", website: hp, customer: { ...f, phone: normalizePhone(f.phone) } }),
       });
       const j = await r.json();
+      if (j.error === "closed") { setClosed(true); return; }
       if (!r.ok || !j.ok) throw new Error(j.error || "failed");
       setDone({ id: j.id, delivered: j.delivered, text: j.text, total: j.total });
       onOrdered?.();
@@ -98,9 +121,21 @@ const OrderForm = forwardRef<HTMLFormElement, { items: OrderItem[]; onOrdered?: 
     }
   };
 
-  if (done) return <Confirmation done={done} />;
+  const fallbackText = () =>
+    `${t.lines.map((l) => `${l.qty}× ${l.product.name}${l.product.variants.length > 1 ? ` (${l.variant.name})` : ""}`).join(", ")} — ${f.name} ${f.phone} ${w ? w.fr : ""} ${f.commune}`.trim();
 
-  const fallbackText = () => `${items.map((i) => `${i.qty}× ${i.slug} (${i.variant})`).join(", ")} — ${f.name} ${f.phone} ${w ? w.fr : ""} ${f.commune}`;
+  if (done) return <Confirmation done={done} />;
+  if (closed) {
+    return (
+      <div className="rounded-[24px] border border-white/[0.08] bg-ink2 p-6 text-center">
+        <p className="font-display text-2xl uppercase">Orders paused</p>
+        <p className="mt-2 text-[0.95rem] leading-relaxed text-mute">{settings.closedMessage}</p>
+        <button type="button" className="pill pill-lilac mt-5 w-full" onClick={async () => { await sendViaInstagram(fallbackText(), settings.instagramHandle); notify("Copied — paste it in the DM"); }}>
+          <InstagramIcon /> Ask by DM
+        </button>
+      </div>
+    );
+  }
 
   return (
     <form ref={ref} onSubmit={submit} noValidate dir="rtl" lang="ar" className="scroll-mt-24 rounded-[24px] border border-white/[0.08] bg-ink2 p-4 font-ar shadow-[0_30px_80px_-40px_rgba(151,31,244,0.6)]">
@@ -116,8 +151,8 @@ const OrderForm = forwardRef<HTMLFormElement, { items: OrderItem[]; onOrdered?: 
           placeholder="Enter coupon code" aria-label="Coupon code" autoCapitalize="characters"
           className="h-12 min-w-0 flex-1 rounded-xl border border-bone/15 bg-abyss px-4 font-sans text-[16px] uppercase text-bone placeholder:normal-case placeholder:text-mute/60"
         />
-        <button type="button" onClick={applyCoupon} className="h-12 shrink-0 rounded-xl bg-gradient-to-l from-violet to-royal px-5 font-sans text-[0.95rem] font-bold text-white active:scale-[0.97]">
-          Apply
+        <button type="button" onClick={applyCoupon} disabled={checking} className="grid h-12 min-w-[5.5rem] shrink-0 place-items-center rounded-xl bg-gradient-to-l from-violet to-royal px-5 font-sans text-[0.95rem] font-bold text-white active:scale-[0.97]">
+          {checking ? <SpinnerIcon /> : "Apply"}
         </button>
       </div>
       {couponMsg && <p className={`mt-1.5 text-sm ${couponMsg.ok ? "text-emerald-400" : "text-rose-400"}`}>{couponMsg.text}</p>}
@@ -125,7 +160,7 @@ const OrderForm = forwardRef<HTMLFormElement, { items: OrderItem[]; onOrdered?: 
       {/* live summary */}
       <div className="mt-3 rounded-2xl border border-white/[0.06] bg-ink3/70 p-4 text-[0.92rem]">
         <Row icon={<CartIcon />} label="سعر المنتج" value={price(t.subtotal)} />
-        <Row icon={<TruckIcon />} label="سعر التوصيل" value={t.shipping === null ? "--" : price(t.shipping)} tone={t.shipping === null ? "text-rose-400" : "text-bone"} />
+        <Row icon={<TruckIcon />} label="سعر التوصيل" value={t.shipping === null ? "--" : t.free ? "Gratuit" : price(t.shipping)} tone={t.shipping === null ? "text-rose-400" : t.free ? "text-emerald-400" : "text-bone"} />
         <Row icon={<TagIcon />} label="الخصم" value={t.discount ? `−${price(t.discount)}` : price(0)} tone="text-emerald-400" />
         <div className="my-3 h-px bg-bone/25" />
         <div className="flex items-center justify-between">
@@ -133,6 +168,9 @@ const OrderForm = forwardRef<HTMLFormElement, { items: OrderItem[]; onOrdered?: 
           <span dir="ltr" className="font-sans text-[1.15rem] font-bold text-bone">{t.total === null ? "--" : price(t.total)}</span>
         </div>
       </div>
+      {cat.freeOver > 0 && !t.free && t.subtotal > 0 && (
+        <p className="mt-2 text-center text-[0.82rem] text-lilac">🚚 التوصيل مجاني ابتداءً من {ltr(price(cat.freeOver))}</p>
+      )}
 
       {/* delivery type */}
       <div className="mt-4 grid grid-cols-2 gap-2" role="radiogroup" aria-label="طريقة التوصيل">
@@ -161,7 +199,7 @@ const OrderForm = forwardRef<HTMLFormElement, { items: OrderItem[]; onOrdered?: 
       <Field label="الولاية" required error={errors.wilaya} icon={<SignIcon />} select>
         <select value={f.wilaya} onChange={set("wilaya")} className={`${input} appearance-none pl-9`} dir="ltr">
           <option value="">Wilaya</option>
-          {WILAYAS.map((x) => <option key={x.code} value={x.code}>{x.code} - {x.fr} - {x.ar}</option>)}
+          {cat.wilayas.map((x) => <option key={x.code} value={x.code}>{x.code} - {x.fr} - {x.ar}</option>)}
         </select>
       </Field>
       <Field label="البلدية" required error={errors.commune} icon={<BuildingIcon />} select>
@@ -180,7 +218,7 @@ const OrderForm = forwardRef<HTMLFormElement, { items: OrderItem[]; onOrdered?: 
       {failed && (
         <div className="mt-4 rounded-xl border border-rose-400/30 bg-rose-400/10 p-3 text-sm text-rose-200">
           تعذر إرسال الطلب. حاول مرة أخرى أو أرسله عبر إنستغرام.
-          <button type="button" className="mt-2 flex items-center gap-1.5 font-bold text-bone underline" onClick={async () => { await sendViaInstagram(fallbackText()); notify("Copied — paste it in the DM"); }}>
+          <button type="button" className="mt-2 flex items-center gap-1.5 font-bold text-bone underline" onClick={async () => { await sendViaInstagram(fallbackText(), settings.instagramHandle); notify("Copied — paste it in the DM"); }}>
             <InstagramIcon className="h-4 w-4" /> Instagram DM
           </button>
         </div>
@@ -191,7 +229,7 @@ const OrderForm = forwardRef<HTMLFormElement, { items: OrderItem[]; onOrdered?: 
         className="mt-5 flex h-[3.6rem] w-full items-center justify-center gap-2.5 rounded-2xl bg-gradient-to-l from-violet via-[#8419e0] to-royal text-[1.35rem] font-extrabold text-white shadow-[0_14px_40px_-12px_rgba(151,31,244,0.9)] transition-transform active:scale-[0.98] disabled:opacity-60"
       >
         {busy ? <SpinnerIcon /> : <BagIcon className="h-6 w-6" />}
-        {busy ? "جاري الإرسال…" : "اطلب الآن"}
+        {busy ? "جاري الإرسال…" : t.lines.length === 0 ? "نفدت الكمية" : "اطلب الآن"}
       </button>
       <p className="mt-3 text-center text-[0.8rem] text-mute">
         💵 الدفع عند الاستلام · <span className="font-sans">Paiement à la livraison</span>
@@ -233,7 +271,8 @@ function Field({ label, required, error, icon, select, children }: { label: stri
 
 function Confirmation({ done }: { done: Done }) {
   const { notify } = useStore();
-  const wa = whatsappLink(done.text);
+  const { settings } = useCatalog();
+  const wa = whatsappLink(settings.whatsapp, done.text);
   return (
     <div dir="rtl" lang="ar" className="rounded-[24px] border border-lilac/30 bg-ink2 p-6 text-center font-ar">
       <span className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-gradient-to-br from-violet to-royal shadow-[0_0_40px_rgba(151,31,244,0.7)]"><CheckIcon className="h-8 w-8 text-white" /></span>
@@ -244,7 +283,7 @@ function Confirmation({ done }: { done: Done }) {
       {!done.delivered && (
         <div className="mt-5 space-y-2">
           <p className="text-sm text-mute">لتسريع التأكيد، أرسل الطلب في رسالة:</p>
-          <button className="pill pill-lilac w-full font-sans" onClick={async () => { await sendViaInstagram(done.text); notify("Order copied — paste it in the DM"); }}>
+          <button className="pill pill-lilac w-full font-sans" onClick={async () => { await sendViaInstagram(done.text, settings.instagramHandle); notify("Order copied — paste it in the DM"); }}>
             <InstagramIcon /> Instagram DM
           </button>
           {wa && <a href={wa} target="_blank" rel="noopener noreferrer" className="pill pill-ghost w-full font-sans"><WhatsAppIcon /> WhatsApp</a>}

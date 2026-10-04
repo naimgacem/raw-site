@@ -5,3 +5,5 @@ tools/out
 .env*.local
 *.tsbuildinfo
 .env
+.data
+.next-check

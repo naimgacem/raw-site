@@ -5,7 +5,8 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useStore } from "./store";
 import { BagIcon, InstagramIcon, MenuIcon, SearchIcon } from "./Icons";
-import { SITE } from "@/lib/site";
+import { useCatalog } from "./catalog";
+import { instagramUrl } from "@/lib/site";
 
 /**
  * Sunviya layout: menu + search left, logo dead centre, sitting on top of the hero video.
@@ -13,6 +14,7 @@ import { SITE } from "@/lib/site";
  */
 export default function Header() {
   const { open, count } = useStore();
+  const { settings } = useCatalog();
   const home = usePathname() === "/";
   const [solid, setSolid] = useState(!home);
 
@@ -50,7 +52,7 @@ export default function Header() {
         </Link>
 
         <div className="flex items-center">
-          <a className={btn} href={SITE.instagram} target="_blank" rel="noopener noreferrer" aria-label="Instagram"><InstagramIcon className="h-[22px] w-[22px]" /></a>
+          <a className={btn} href={instagramUrl(settings.instagramHandle)} target="_blank" rel="noopener noreferrer" aria-label="Instagram"><InstagramIcon className="h-[22px] w-[22px]" /></a>
           <button className={`${btn} relative`} aria-label={`Bag, ${count} item${count === 1 ? "" : "s"}`} onClick={() => open("cart")}>
             <BagIcon />
             {count > 0 && (

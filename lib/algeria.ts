@@ -1,22 +1,22 @@
 /**
- * The 58 wilayas + delivery prices (DA). Communes load from /public/data/communes.json
- * (source: github.com/othmanus/algeria-cities, Interior Ministry list).
+ * The 58 wilayas and the starting delivery prices (DA). Prices are edited from /admin → Delivery.
+ * Communes load from /public/data/communes.json (source: github.com/othmanus/algeria-cities,
+ * Interior Ministry list).
  *
- * Delivery prices are PLACEHOLDERS — set them to your courier's rates (Yalidine, ZR, Maystro…).
- * `desk: null` = no stop-desk in that wilaya.
+ * Each wilaya belongs to a price zone; a wilaya can also have its own prices or be switched off.
+ * `desk: null` = no stop-desk.
  */
-export type DeliveryType = "home" | "desk";
+import type { Delivery, Wilaya, Zone } from "./types";
 
-type Zone = { home: number; desk: number | null };
-const ZONES: Record<"alger" | "centre" | "north" | "south" | "far", Zone> = {
-  alger: { home: 400, desk: 250 },
-  centre: { home: 550, desk: 350 },
-  north: { home: 650, desk: 400 },
-  south: { home: 850, desk: 550 },
-  far: { home: 1300, desk: 900 },
-};
+const ZONES: Zone[] = [
+  { id: "alger", name: "Alger", home: 400, desk: 250 },
+  { id: "centre", name: "Centre", home: 550, desk: 350 },
+  { id: "north", name: "North", home: 650, desk: 400 },
+  { id: "south", name: "South", home: 850, desk: 550 },
+  { id: "far", name: "Far south", home: 1300, desk: 900 },
+];
 
-const W: [string, string, string, keyof typeof ZONES][] = [
+const W: [string, string, string, string][] = [
   ["01", "Adrar", "أدرار", "far"],
   ["02", "Chlef", "الشلف", "north"],
   ["03", "Laghouat", "الأغواط", "south"],
@@ -77,15 +77,30 @@ const W: [string, string, string, keyof typeof ZONES][] = [
   ["58", "El Meniaa", "المنيعة", "south"],
 ];
 
-export type Wilaya = { code: string; fr: string; ar: string; home: number; desk: number | null };
-export const WILAYAS: Wilaya[] = W.map(([code, fr, ar, z]) => ({ code, fr, ar, ...ZONES[z] }));
-export const getWilaya = (code: string) => WILAYAS.find((w) => w.code === code);
+export const WILAYA_LIST = W.map(([code, fr, ar]) => ({ code, fr, ar }));
 
-export function deliveryFee(code: string, type: DeliveryType): number | null {
-  const w = getWilaya(code);
-  if (!w) return null;
-  return type === "desk" ? w.desk : w.home;
+export const DEFAULT_DELIVERY: Delivery = {
+  zones: ZONES,
+  rules: Object.fromEntries(W.map(([code, , , zone]) => [code, { zone }])),
+  freeOver: 0,
+};
+
+export type ResolvedWilaya = Wilaya & { zone: string; off: boolean; custom: boolean };
+
+/** Every wilaya with its final prices (custom price > zone price). */
+export function resolveWilayas(d: Delivery): ResolvedWilaya[] {
+  return WILAYA_LIST.map((w) => {
+    const rule = d.rules[w.code] ?? { zone: d.zones[0]?.id ?? "" };
+    const zone = d.zones.find((z) => z.id === rule.zone) ?? d.zones[0];
+    const prices = rule.custom ?? { home: zone?.home ?? 0, desk: zone?.desk ?? null };
+    return { ...w, home: prices.home, desk: prices.desk, zone: zone?.id ?? "", off: !!rule.off, custom: !!rule.custom };
+  });
 }
+
+export const wilayaLabel = (code: string) => {
+  const w = WILAYA_LIST.find((x) => x.code === code);
+  return w ? `${w.code} ${w.fr}` : code;
+};
 
 /** Algerian mobile: 05/06/07 + 8 digits. Accepts +213 / 00213 and spaces. Returns 0XXXXXXXXX or null. */
 export function normalizePhone(raw: string): string | null {

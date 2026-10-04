@@ -1,60 +1,91 @@
-// Order maths shared by the order form (display) and /api/order (source of truth).
-import { getProduct, getVariant } from "./products";
-import { deliveryFee, getWilaya, type DeliveryType } from "./algeria";
-import { COUPONS, price } from "./site";
+// Order maths shared by the order form (display), /api/order (source of truth) and the admin.
+import { findVariant, isAvailable } from "./products";
+import { wilayaLabel } from "./algeria";
+import { price } from "./site";
+import type { CouponInfo, DeliveryType, Order, OrderLine, Product, Wilaya } from "./types";
 
 export type OrderItem = { slug: string; variant: string; qty: number };
 
-export type OrderCustomer = {
-  name: string;
-  phone: string;
-  wilaya: string; // code "16"
-  commune: string;
-  address: string;
-  delivery: DeliveryType;
-  note?: string;
-};
+type Priced = { products: Product[]; wilayas: Wilaya[]; freeOver: number };
 
-export function findCoupon(code: string) {
-  const key = code.trim().toUpperCase();
-  return key && COUPONS[key] ? { code: key, ...COUPONS[key] } : null;
+export function couponDiscount(c: CouponInfo | null, subtotal: number) {
+  if (!c || subtotal <= 0 || subtotal < c.minOrder) return 0;
+  return Math.min(subtotal, c.type === "percent" ? Math.round((subtotal * c.value) / 100) : c.value);
 }
 
-export function totals(items: OrderItem[], wilaya: string, delivery: DeliveryType, coupon: string) {
+/** Delivery fee for a wilaya, or null when it isn't delivered there (or has no stop-desk). */
+export function deliveryFee(wilayas: Wilaya[], code: string, type: DeliveryType): number | null {
+  const w = wilayas.find((x) => x.code === code);
+  if (!w) return null;
+  return type === "desk" ? w.desk : w.home;
+}
+
+export function totals(cat: Priced, items: OrderItem[], wilaya: string, delivery: DeliveryType, coupon: CouponInfo | null) {
   const lines = items
     .map((i) => {
-      const p = getProduct(i.slug);
+      const p = cat.products.find((x) => x.slug === i.slug && !x.hidden);
       if (!p) return null;
-      const qty = Math.max(1, Math.min(20, Math.floor(i.qty)));
-      return { product: p, variant: getVariant(p, i.variant), qty, total: p.price * qty };
+      const variant = findVariant(p, i.variant);
+      if (!isAvailable(p, variant)) return null;
+      const qty = Math.max(1, Math.min(20, Math.floor(i.qty) || 1));
+      return { product: p, variant, qty, total: p.price * qty };
     })
     .filter((l): l is NonNullable<typeof l> => l !== null);
   const subtotal = lines.reduce((n, l) => n + l.total, 0);
-  const shipping = wilaya ? deliveryFee(wilaya, delivery) : null;
-  const c = findCoupon(coupon);
-  const discount = c ? Math.min(subtotal, c.type === "percent" ? Math.round((subtotal * c.value) / 100) : c.value) : 0;
+  const discount = couponDiscount(coupon, subtotal);
+  const fee = wilaya ? deliveryFee(cat.wilayas, wilaya, delivery) : null;
+  const free = fee !== null && cat.freeOver > 0 && subtotal - discount >= cat.freeOver;
+  const shipping = fee === null ? null : free ? 0 : fee;
   const total = shipping === null ? null : subtotal - discount + shipping;
-  return { lines, subtotal, shipping, discount, coupon: c, total };
+  return { lines, subtotal, shipping, discount, coupon: discount ? coupon : null, total, free };
 }
 
-export function orderText(id: string, c: OrderCustomer, t: ReturnType<typeof totals>) {
-  const w = getWilaya(c.wilaya);
+export const toOrderLines = (t: ReturnType<typeof totals>): OrderLine[] =>
+  t.lines.map((l) => ({
+    slug: l.product.slug, variant: l.variant.id, name: l.product.name,
+    variantName: l.product.variants.length > 1 ? l.variant.name : "",
+    image: l.variant.image, price: l.product.price, qty: l.qty,
+  }));
+
+export const orderRef = (id: number | string) => `#${id}`;
+
+export const itemsSummary = (items: OrderLine[]) =>
+  items.map((l) => `${l.qty > 1 ? `${l.qty}× ` : ""}${l.name}${l.variantName ? ` (${l.variantName})` : ""}`).join(", ");
+
+/** The message the artist receives on Telegram. */
+export function orderText(o: Order, link?: string) {
   return [
-    `🛍 طلب جديد / Nouvelle commande — ${id}`,
+    `${o.flag === "blocked" ? "⚠️ BLOCKED NUMBER\n" : ""}🛍 طلب جديد / Nouvelle commande — ${orderRef(o.id)}`,
     ``,
-    ...t.lines.map((l) => `• ${l.qty}× ${l.product.name}${l.product.variants.length > 1 ? ` (${l.variant.name})` : ""} — ${price(l.total)}`),
+    ...o.items.map((l) => `• ${l.qty}× ${l.name}${l.variantName ? ` (${l.variantName})` : ""} — ${price(l.price * l.qty)}`),
     ``,
-    `Produits: ${price(t.subtotal)}`,
-    `Livraison (${c.delivery === "desk" ? "Stop desk" : "Domicile"}): ${t.shipping === null ? "—" : price(t.shipping)}`,
-    t.discount ? `Remise${t.coupon ? ` (${t.coupon.code})` : ""}: −${price(t.discount)}` : "",
-    `TOTAL: ${t.total === null ? "—" : price(t.total)}`,
+    `Produits: ${price(o.subtotal)}`,
+    `Livraison (${o.delivery === "desk" ? "Stop desk" : "Domicile"}): ${o.shipping ? price(o.shipping) : "Gratuite"}`,
+    o.discount ? `Remise${o.coupon ? ` (${o.coupon})` : ""}: −${price(o.discount)}` : "",
+    `TOTAL: ${price(o.total)}`,
     ``,
-    `👤 ${c.name}`,
-    `📞 ${c.phone}`,
-    `📍 ${w ? `${w.code} ${w.fr} / ${w.ar}` : c.wilaya} — ${c.commune}`,
-    c.address ? `🏠 ${c.address}` : "",
-    c.note ? `📝 ${c.note}` : "",
+    `👤 ${o.name}`,
+    `📞 ${o.phone}`,
+    `📍 ${wilayaLabel(o.wilaya)} — ${o.commune}`,
+    o.address ? `🏠 ${o.address}` : "",
+    o.note ? `📝 ${o.note}` : "",
+    link ? `\n${link}` : "",
   ]
     .filter((x, i, a) => x !== "" || a[i - 1] !== "")
+    .join("\n");
+}
+
+/** Plain text for the courier (Yalidine, ZR, Maystro…) or a DM. */
+export function courierText(o: Order) {
+  return [
+    `${orderRef(o.id)} — ${o.name}`,
+    `Tel: ${o.phone}`,
+    `${wilayaLabel(o.wilaya)} — ${o.commune}`,
+    o.address ? `Adresse: ${o.address}` : "",
+    `Livraison: ${o.delivery === "desk" ? "Stop desk" : "Domicile"}`,
+    `Produits: ${itemsSummary(o.items)}`,
+    `Montant à encaisser: ${price(o.total)}`,
+  ]
+    .filter(Boolean)
     .join("\n");
 }

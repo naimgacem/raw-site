@@ -1,27 +1,11 @@
 /**
- * The service menu. Prices (DA) are PLACEHOLDERS until the artist confirms them.
+ * The starting service menu — edited from /admin → Catalog → Styles once the site is live.
  * `from` is the starting price; each option choice adds `add` to it.
- * `render` is a file in /public/renders (made by `npm run render`).
+ * `render` is a file in /public/renders (made by `npm run render`) or an uploaded photo.
  */
-export type StyleCategory = "braids" | "twists" | "art";
+import type { Category, HairStyle, Note, StyleOption } from "./types";
 
-export type StyleOption = { label: string; choices: { label: string; add: number }[] };
-
-export type HairStyle = {
-  slug: string;
-  name: string;
-  category: StyleCategory;
-  render: string;
-  from: number;
-  duration: string;
-  tag?: "Signature" | "Popular" | "New";
-  blurb: string;
-  description: string;
-  options: StyleOption[];
-  includes: string[];
-};
-
-export const CATEGORIES: { id: StyleCategory; label: string }[] = [
+export const DEFAULT_CATEGORIES: Category[] = [
   { id: "braids", label: "Braids" },
   { id: "twists", label: "Twists" },
   { id: "art", label: "Art" },
@@ -44,7 +28,7 @@ const SIZE: StyleOption = {
   ],
 };
 
-export const STYLES: HairStyle[] = [
+export const DEFAULT_STYLES: HairStyle[] = [
   {
     slug: "art",
     name: "Custom Art",
@@ -167,9 +151,7 @@ export const STYLES: HairStyle[] = [
   },
 ];
 
-export const getStyle = (slug: string) => STYLES.find((s) => s.slug === slug);
-
-export const BOOKING_NOTES = [
+export const DEFAULT_NOTES: Note[] = [
   { title: "Mobile service", text: "RAW travels to you. A small travel fee may apply depending on your area." },
   { title: "Come ready", text: "Hair washed, fully dry and detangled. Extra time for detangling may be charged." },
   { title: "Deposit", text: "A deposit secures your slot and goes toward the final price." },

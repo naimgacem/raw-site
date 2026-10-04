@@ -103,6 +103,13 @@
     transform: none;
   }
 
+  .no-scrollbar {
+    scrollbar-width: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
   .safe-b {
     padding-bottom: max(1rem, env(safe-area-inset-bottom));
   }

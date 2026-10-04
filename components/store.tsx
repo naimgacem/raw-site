@@ -1,7 +1,9 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { getProduct, getVariant } from "@/lib/products";
+import { useCatalog } from "./catalog";
+import { findVariant } from "@/lib/products";
+import type { Product } from "@/lib/types";
 
 export type CartLine = { slug: string; variant: string; qty: number };
 type Panel = null | "menu" | "search" | "cart";
@@ -26,18 +28,19 @@ const Ctx = createContext<Store | null>(null);
 const KEY = "raw-bag-v1";
 
 export function StoreProvider({ children }: { children: React.ReactNode }) {
+  const { products } = useCatalog();
   const [lines, setLines] = useState<CartLine[]>([]);
   const [panel, setPanel] = useState<Panel>(null);
   const [booking, setBooking] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
-  // the bag survives reloads on this device
+  // the bag survives reloads on this device (products removed since then drop out)
   useEffect(() => {
     try {
       const raw = localStorage.getItem(KEY);
-      if (raw) setLines(JSON.parse(raw).filter((l: CartLine) => getProduct(l.slug)));
+      if (raw) setLines(JSON.parse(raw).filter((l: CartLine) => products.some((p) => p.slug === l.slug)));
     } catch {}
-  }, []);
+  }, [products]);
   useEffect(() => {
     try { localStorage.setItem(KEY, JSON.stringify(lines)); } catch {}
   }, [lines]);
@@ -76,15 +79,16 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const value = useMemo<Store>(() => {
-    const count = lines.reduce((n, l) => n + l.qty, 0);
-    const subtotal = lines.reduce((n, l) => n + (getProduct(l.slug)?.price ?? 0) * l.qty, 0);
+    const live = lines.filter((l) => products.some((p) => p.slug === l.slug));
+    const count = live.reduce((n, l) => n + l.qty, 0);
+    const subtotal = live.reduce((n, l) => n + (products.find((p) => p.slug === l.slug)?.price ?? 0) * l.qty, 0);
     return {
-      lines, count, subtotal, add, setQty, clear: () => setLines([]),
+      lines: live, count, subtotal, add, setQty, clear: () => setLines([]),
       panel, open: (p) => { setBooking(null); setPanel(p); }, close: () => setPanel(null),
       booking, book: (slug) => { setPanel(null); setBooking(slug); },
       toast, notify,
     };
-  }, [lines, panel, booking, toast, add, setQty, notify]);
+  }, [lines, products, panel, booking, toast, add, setQty, notify]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
@@ -95,7 +99,7 @@ export function useStore() {
   return s;
 }
 
-export function lineInfo(l: CartLine) {
-  const p = getProduct(l.slug)!;
-  return { product: p, variant: getVariant(p, l.variant) };
+export function lineInfo(products: Product[], l: CartLine) {
+  const p = products.find((x) => x.slug === l.slug)!;
+  return { product: p, variant: findVariant(p, l.variant) };
 }

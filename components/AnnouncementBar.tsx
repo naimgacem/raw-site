@@ -1,8 +1,7 @@
-import { SITE } from "@/lib/site";
-
 // Lilac bar in the bold face, like Sunviya's "BUILT FOR THE WILD ONES." — here as a slow marquee.
-export default function AnnouncementBar() {
-  const items = [...SITE.announcements, ...SITE.announcements];
+export default function AnnouncementBar({ items: list }: { items: string[] }) {
+  if (list.length === 0) return null;
+  const items = [...list, ...list];
   return (
     <div className="relative z-50 h-9 overflow-hidden bg-lilac text-abyss" role="region" aria-label="Announcements">
       <div className="flex h-full w-max animate-marquee items-center motion-reduce:animate-none">

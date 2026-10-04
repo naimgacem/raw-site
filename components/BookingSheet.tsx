@@ -1,33 +1,53 @@
 "use client";
 
 import Image from "next/image";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { motion, useDragControls } from "framer-motion";
 import { useStore } from "./store";
+import { useCatalog } from "./catalog";
 import { CheckIcon, ClockIcon, CloseIcon, InstagramIcon, PinIcon, WhatsAppIcon } from "./Icons";
-import { getStyle } from "@/lib/styles";
-import { SITE, price, whatsappLink } from "@/lib/site";
+import { fit, igHandle, price, whatsappLink } from "@/lib/site";
 import { bookingMessage, sendViaInstagram } from "@/lib/messages";
 
 const TIMES = ["Morning", "Afternoon", "Evening"];
 
 // Bottom sheet: pick a style's options, see the live estimate, send a ready-made DM.
 export default function BookingSheet({ slug, onClose }: { slug: string; onClose: () => void }) {
-  const style = getStyle(slug);
+  const { styles, settings } = useCatalog();
+  const style = styles.find((s) => s.slug === slug);
   const { notify } = useStore();
   const drag = useDragControls();
   const [picks, setPicks] = useState<Record<string, number>>({});
   const [date, setDate] = useState("");
   const [time, setTime] = useState("");
   const [area, setArea] = useState("");
+  const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
+  const recorded = useRef(""); // one saved request per distinct booking
   if (!style) return null;
 
-  const chosen = Object.fromEntries(style.options.map((o) => [o.label, o.choices[picks[o.label] ?? 0]]));
+  const chosen: Record<string, { label: string; add: number }> = {};
+  for (const o of style.options) {
+    const c = o.choices[picks[o.label] ?? 0];
+    if (c) chosen[o.label] = c;
+  }
   const total = style.from + Object.values(chosen).reduce((n, c) => n + c.add, 0);
   const pickLabels = Object.fromEntries(Object.entries(chosen).map(([k, c]) => [k, c.label]));
   const when = date ? new Date(date + "T12:00").toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" }) : "";
-  const msg = bookingMessage(style, pickLabels, total, { date: when, time, area });
-  const wa = whatsappLink(msg);
+  const msg = bookingMessage(style, pickLabels, total, { date: when, time, area, name });
+  const wa = whatsappLink(settings.whatsapp, msg);
+
+  // saves the request for the artist's dashboard; never blocks the DM
+  const record = () => {
+    if (!settings.bookingsOpen || recorded.current === msg) return;
+    recorded.current = msg;
+    fetch("/api/booking", {
+      method: "POST", keepalive: true, headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ style: style.slug, picks: pickLabels, date, time, area, name, phone }),
+    }).catch(() => {});
+  };
+
+  const field = "h-12 w-full rounded-2xl border border-bone/15 bg-ink2 px-3 text-[16px] text-bone placeholder:text-mute/70";
 
   return (
     <>
@@ -44,7 +64,7 @@ export default function BookingSheet({ slug, onClose }: { slug: string; onClose:
         <div className="stage relative h-[38svh] max-h-[340px] shrink-0 touch-none" onPointerDown={(e) => drag.start(e)}>
           <div className="absolute left-1/2 top-2.5 z-10 h-1.5 w-12 -translate-x-1/2 rounded-full bg-white/30" />
           <button onClick={onClose} aria-label="Close" className="absolute right-3 top-3 z-10 grid h-10 w-10 place-items-center rounded-full bg-black/40 backdrop-blur"><CloseIcon className="h-5 w-5" /></button>
-          <Image src={style.render} alt={`${style.name} — 3D illustration`} fill sizes="(max-width: 560px) 100vw, 560px" className="animate-float object-contain p-2" priority />
+          <Image src={style.render} alt={`${style.name} — illustration`} fill sizes="(max-width: 560px) 100vw, 560px" className={fit(style.render) === "object-contain" ? "animate-float object-contain p-2" : "object-cover"} priority />
           {style.tag && <span className="absolute left-4 top-4 rounded-full bg-lilac px-3 py-1 font-display text-xs uppercase text-abyss">{style.tag}</span>}
         </div>
 
@@ -55,6 +75,9 @@ export default function BookingSheet({ slug, onClose }: { slug: string; onClose:
             <span className="flex items-center gap-1.5"><ClockIcon /> {style.duration}</span>
             <span className="flex items-center gap-1.5"><PinIcon /> We come to you</span>
           </div>
+          {!settings.bookingsOpen && (
+            <p className="mt-4 rounded-2xl border border-lilac/25 bg-lilac/10 p-3 text-sm text-lilac">The diary is full right now — send a DM to join the waiting list.</p>
+          )}
           <p className="mt-4 text-[0.95rem] leading-relaxed text-bone/85">{style.description}</p>
 
           {style.options.map((o) => (
@@ -81,17 +104,22 @@ export default function BookingSheet({ slug, onClose }: { slug: string; onClose:
               <input
                 type="date" value={date} onChange={(e) => setDate(e.target.value)} aria-label="Preferred date"
                 min={new Date().toISOString().slice(0, 10)}
-                className="h-12 rounded-2xl border border-bone/15 bg-ink2 px-3 text-[16px] text-bone [color-scheme:dark]"
+                className={`${field} [color-scheme:dark]`}
               />
-              <input
-                value={area} onChange={(e) => setArea(e.target.value)} placeholder="Your area" aria-label="Your area"
-                className="h-12 rounded-2xl border border-bone/15 bg-ink2 px-3 text-[16px] text-bone placeholder:text-mute/70"
-              />
+              <input value={area} onChange={(e) => setArea(e.target.value)} placeholder="Your area" aria-label="Your area" className={field} />
             </div>
             <div className="mt-2 flex gap-2">
               {TIMES.map((t) => (
                 <button key={t} type="button" aria-pressed={time === t} onClick={() => setTime(time === t ? "" : t)} className="chip h-10 flex-1 justify-center">{t}</button>
               ))}
+            </div>
+          </fieldset>
+
+          <fieldset className="mt-6">
+            <legend className="mb-2.5 font-display text-sm uppercase text-lilac">You</legend>
+            <div className="grid grid-cols-2 gap-2">
+              <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name" aria-label="Your name" autoComplete="given-name" className={field} />
+              <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Phone (optional)" aria-label="Phone number" type="tel" inputMode="tel" autoComplete="tel" className={field} />
             </div>
           </fieldset>
 
@@ -109,13 +137,13 @@ export default function BookingSheet({ slug, onClose }: { slug: string; onClose:
           <div className="flex gap-2">
             <button
               className="pill pill-lilac flex-1"
-              onClick={async () => { await sendViaInstagram(msg); notify("Request copied — paste it in the DM"); }}
+              onClick={async () => { record(); await sendViaInstagram(msg, settings.instagramHandle); notify("Request copied — paste it in the DM"); }}
             >
               <InstagramIcon /> Book via DM
             </button>
-            {wa && <a href={wa} target="_blank" rel="noopener noreferrer" aria-label="Book on WhatsApp" className="pill pill-ghost w-14 px-0"><WhatsAppIcon /></a>}
+            {wa && <a href={wa} onClick={record} target="_blank" rel="noopener noreferrer" aria-label="Book on WhatsApp" className="pill pill-ghost w-14 px-0"><WhatsAppIcon /></a>}
           </div>
-          <p className="mt-2 text-center text-[0.7rem] text-mute">We copy your request — just paste it in {SITE.instagramHandle}’s DMs.</p>
+          <p className="mt-2 text-center text-[0.7rem] text-mute">We copy your request — just paste it in @{igHandle(settings.instagramHandle)}’s DMs.</p>
         </div>
       </motion.div>
     </>

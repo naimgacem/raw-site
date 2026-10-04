@@ -1,11 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Caesar_Dressing, Instrument_Sans, Tajawal } from "next/font/google";
 import "./globals.css";
-import { StoreProvider } from "@/components/store";
-import AnnouncementBar from "@/components/AnnouncementBar";
-import Header from "@/components/Header";
-import Footer from "@/components/Footer";
-import Overlays from "@/components/Overlays";
 import { SITE } from "@/lib/site";
 
 // The bold display face Sunviya uses
@@ -36,18 +31,7 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${display.variable} ${sans.variable} ${arabic.variable}`}>
-      <body>
-        <StoreProvider>
-          {/* one phone-width column; the site is designed mobile-first */}
-          <div className="mx-auto min-h-screen max-w-[560px] bg-abyss shadow-[0_0_80px_rgba(0,0,0,0.6)]">
-            <AnnouncementBar />
-            <Header />
-            <main>{children}</main>
-            <Footer />
-          </div>
-          <Overlays />
-        </StoreProvider>
-      </body>
+      <body>{children}</body>
     </html>
   );
 }

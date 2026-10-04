@@ -1,0 +1,20 @@
+// Built-in 3D illustrations (public/renders), offered next to uploaded photos in the image picker.
+export const RENDERS = [
+  "/renders/art.webp",
+  "/renders/banner.webp",
+  "/renders/barrel.webp",
+  "/renders/bonnet.webp",
+  "/renders/box.webp",
+  "/renders/cornrows.webp",
+  "/renders/crown-oil.webp",
+  "/renders/cuffs.webp",
+  "/renders/durag-obsidian.webp",
+  "/renders/durag-pearl.webp",
+  "/renders/durag-royal.webp",
+  "/renders/durag-velvet.webp",
+  "/renders/edge-brush.webp",
+  "/renders/freestyle.webp",
+  "/renders/fulani.webp",
+  "/renders/knotless.webp",
+  "/renders/twists.webp",
+];

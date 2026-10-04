@@ -3,21 +3,24 @@
 import Image from "next/image";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "./store";
+import { useCatalog } from "./catalog";
 import ProductCard from "./ProductCard";
 import OrderForm from "./OrderForm";
-import { BagIcon, ChevronIcon, MinusIcon, PlusIcon } from "./Icons";
-import { PRODUCTS, getProduct } from "@/lib/products";
-import { price } from "@/lib/site";
+import { BagIcon, ChevronIcon, InstagramIcon, MinusIcon, PlusIcon } from "./Icons";
+import { isAvailable } from "@/lib/products";
+import { fit, igHandle, instagramDM, price } from "@/lib/site";
 
 export default function ProductView({ slug }: { slug: string }) {
-  const p = getProduct(slug)!;
+  const { products, settings } = useCatalog();
+  const p = products.find((x) => x.slug === slug)!;
   const { add, open } = useStore();
   const [vi, setVi] = useState(0);
   const [qty, setQty] = useState(1);
   const [acc, setAcc] = useState<string | null>("Details");
   const gallery = useRef<HTMLDivElement>(null);
   const form = useRef<HTMLFormElement>(null);
-  const v = p.variants[vi];
+  const v = p.variants[vi] ?? p.variants[0];
+  const available = isAvailable(p, v);
   const items = useMemo(() => [{ slug: p.slug, variant: v.id, qty }], [p.slug, v.id, qty]);
   // the sticky bar steps aside while the order form itself is on screen
   const [formVisible, setFormVisible] = useState(false);
@@ -32,7 +35,8 @@ export default function ProductView({ slug }: { slug: string }) {
   // ?v=<variant> deep-links a colour (used by the bag)
   useEffect(() => {
     const id = new URLSearchParams(window.location.search).get("v");
-    const i = p.variants.findIndex((x) => x.id === id);
+    // a ?v= colour, else the first one still in stock
+    const i = id ? p.variants.findIndex((x) => x.id === id) : p.variants.findIndex((x) => !x.soldOut);
     if (i > 0) { setVi(i); requestAnimationFrame(() => scrollTo(i, "instant")); }
   }, [p]);
 
@@ -47,11 +51,11 @@ export default function ProductView({ slug }: { slug: string }) {
     if (i !== vi && i >= 0 && i < p.variants.length) setVi(i);
   };
 
-  const related = PRODUCTS.filter((x) => x.slug !== p.slug).sort((a, b) => Number(b.collection === p.collection) - Number(a.collection === p.collection));
+  const related = products.filter((x) => x.slug !== p.slug).sort((a, b) => Number(b.collection === p.collection) - Number(a.collection === p.collection));
   const sections = [
     { title: "Details", body: p.details },
     { title: "Care", body: p.care },
-    { title: "Delivery", body: ["Ordered by DM — confirmed within 24h", "Hand-over at your appointment, or shipped", "Questions? Message @royal4rt"] },
+    { title: "Delivery", body: ["Cash on delivery to all 58 wilayas", "Home delivery or stop desk", "We call you to confirm before shipping", `Questions? Message @${igHandle(settings.instagramHandle)}`] },
   ];
 
   return (
@@ -61,11 +65,11 @@ export default function ProductView({ slug }: { slug: string }) {
         <div ref={gallery} onScroll={onScroll} className="rail stage gap-0 px-0 pb-0" aria-label="Product images">
           {p.variants.map((x, i) => (
             <div key={x.id} className="relative aspect-square w-full shrink-0">
-              <Image src={x.image} alt={`${p.name} — ${x.name}`} fill priority={i === 0} sizes="(max-width: 560px) 100vw, 560px" className="object-contain" />
+              <Image src={x.image} alt={`${p.name} — ${x.name}`} fill priority={i === 0} sizes="(max-width: 560px) 100vw, 560px" className={fit(x.image)} />
             </div>
           ))}
         </div>
-        {p.tag && <span className={`absolute left-4 top-4 rounded-full px-3 py-1 font-sans text-xs font-semibold ${p.tag === "Sale" ? "bg-lilac text-abyss" : "bg-abyss/70 text-lilac"}`}>{p.tag}</span>}
+        {!available ? <span className="absolute left-4 top-4 rounded-full bg-bone px-3 py-1 font-sans text-xs font-semibold text-abyss">Sold out</span> : p.tag && <span className={`absolute left-4 top-4 rounded-full px-3 py-1 font-sans text-xs font-semibold ${p.tag === "Sale" ? "bg-lilac text-abyss" : "bg-abyss/70 text-lilac"}`}>{p.tag}</span>}
         {p.variants.length > 1 && (
           <div className="absolute inset-x-0 bottom-4 flex justify-center gap-1.5">
             {p.variants.map((x, i) => (
@@ -92,26 +96,36 @@ export default function ProductView({ slug }: { slug: string }) {
                 <button
                   key={x.id} aria-label={x.name} aria-pressed={i === vi}
                   onClick={() => { setVi(i); scrollTo(i); }}
-                  className={`h-11 w-11 rounded-full ring-offset-2 ring-offset-abyss transition ${i === vi ? "ring-2 ring-lilac" : "ring-1 ring-white/25"}`}
+                  className={`relative h-11 w-11 overflow-hidden rounded-full ring-offset-2 ring-offset-abyss transition ${i === vi ? "ring-2 ring-lilac" : "ring-1 ring-white/25"}`}
                   style={{ background: x.swatch }}
-                />
+                >
+                  {x.soldOut && <span className="absolute left-1/2 top-1/2 h-[2px] w-[130%] -translate-x-1/2 -translate-y-1/2 -rotate-45 bg-bone/90 shadow" aria-hidden />}
+                </button>
               ))}
             </div>
           </fieldset>
         )}
 
-        <div className="mt-6 flex items-center gap-4">
+        {available && <div className="mt-6 flex items-center gap-4">
           <span className="text-sm text-mute">Quantity</span>
           <div className="flex items-center rounded-full border border-bone/20">
             <button className="grid h-11 w-11 place-items-center" aria-label="Decrease quantity" onClick={() => setQty(Math.max(1, qty - 1))}><MinusIcon className="h-4 w-4" /></button>
             <span className="w-7 text-center font-semibold tabular-nums">{qty}</span>
             <button className="grid h-11 w-11 place-items-center" aria-label="Increase quantity" onClick={() => setQty(Math.min(20, qty + 1))}><PlusIcon className="h-4 w-4" /></button>
           </div>
-        </div>
+        </div>}
 
         {/* cash-on-delivery order form, right on the product page */}
         <div className="mt-7">
-          <OrderForm ref={form} items={items} />
+          {available ? (
+            <OrderForm ref={form} items={items} />
+          ) : (
+            <div className="rounded-[24px] border border-white/[0.08] bg-ink2 p-6 text-center">
+              <p className="font-display text-2xl uppercase">Sold out</p>
+              <p className="mt-2 text-[0.95rem] text-mute">{p.variants.length > 1 && !p.soldOut ? `${v.name} is gone for now — pick another colour, or` : "Gone for now —"} DM us to hear when it’s back.</p>
+              <a href={instagramDM(settings.instagramHandle)} target="_blank" rel="noopener noreferrer" className="pill pill-lilac mt-5 w-full"><InstagramIcon /> Notify me</a>
+            </div>
+          )}
         </div>
 
         <div className="mt-8">
@@ -142,17 +156,17 @@ export default function ProductView({ slug }: { slug: string }) {
       {/* sticky buy bar: add to bag, or jump to the order form */}
       <div className={`safe-b fixed inset-x-0 bottom-0 z-30 mx-auto flex max-w-[560px] gap-2 border-t border-white/[0.08] bg-abyss/90 px-4 pt-3 backdrop-blur-xl transition-transform duration-300 ${formVisible ? "translate-y-full" : ""}`}>
         <button
-          aria-label="Add to bag"
-          className="pill pill-ghost w-14 shrink-0 px-0"
+          aria-label="Add to bag" disabled={!available}
+          className="pill pill-ghost w-14 shrink-0 px-0 disabled:opacity-40"
           onClick={() => { add(p.slug, v.id, qty); open("cart"); }}
         >
           <BagIcon />
         </button>
         <button
-          className="pill pill-lilac flex-1 justify-between px-6"
+          className="pill pill-lilac flex-1 justify-between px-6 disabled:opacity-60" disabled={!available}
           onClick={() => { form.current?.scrollIntoView({ behavior: "smooth", block: "start" }); setTimeout(() => form.current?.querySelector<HTMLInputElement>('input[autocomplete="name"]')?.focus({ preventScroll: true }), 650); }}
         >
-          <span className="font-ar text-[1.05rem] font-extrabold normal-case">اطلب الآن</span>
+          <span className="font-ar text-[1.05rem] font-extrabold normal-case">{available ? "اطلب الآن" : "نفدت الكمية"}</span>
           <span className="font-sans text-base font-semibold">{price(p.price * qty)}</span>
         </button>
       </div>

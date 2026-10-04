@@ -4,12 +4,13 @@ import Image from "next/image";
 import { useStore } from "./store";
 import Reveal from "./Reveal";
 import { ArrowIcon, ClockIcon } from "./Icons";
-import { CATEGORIES, STYLES } from "@/lib/styles";
-import { price } from "@/lib/site";
+import { useCatalog } from "./catalog";
+import { fit, price } from "@/lib/site";
 
 // The full price list, grouped by category with a sticky jump bar.
 export default function MenuList() {
   const { book } = useStore();
+  const { styles: STYLES, categories: CATEGORIES } = useCatalog();
   return (
     <>
       <nav className="sticky top-[68px] z-30 flex gap-2 border-y border-white/[0.06] bg-abyss/90 px-4 py-2.5 backdrop-blur-xl" aria-label="Menu categories">
@@ -29,7 +30,7 @@ export default function MenuList() {
               <Reveal as="li" key={s.slug}>
                 <button onClick={() => book(s.slug)} className="flex w-full items-center gap-3.5 rounded-[20px] bg-ink2 p-2.5 pr-4 text-left transition-transform active:scale-[0.98]">
                   <span className="stage relative h-[104px] w-[104px] shrink-0 overflow-hidden rounded-2xl">
-                    <Image src={s.render} alt="" fill sizes="104px" className="object-contain" />
+                    <Image src={s.render} alt="" fill sizes="104px" className={fit(s.render)} />
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="flex items-center gap-2">

@@ -7,9 +7,11 @@
     "build": "next build",
     "start": "next start",
     "render": "node tools/render.mjs",
-    "hero-video": "node tools/hero-video.mjs"
+    "hero-video": "node tools/hero-video.mjs",
+    "qa:admin": "node tools/qa-admin.mjs"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.117.2",
     "framer-motion": "^11.18.2",
     "next": "14.2.35",
     "react": "^18.3.1",
@@ -25,5 +27,8 @@
     "tailwindcss": "^3.4.7",
     "three": "^0.186.1",
     "typescript": "^5.5.4"
+  },
+  "engines": {
+    "node": "22.x"
   }
 }

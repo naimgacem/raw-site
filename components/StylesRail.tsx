@@ -2,14 +2,15 @@
 
 import { useRef, useState } from "react";
 import StyleCard from "./StyleCard";
-import { CATEGORIES, STYLES, type StyleCategory } from "@/lib/styles";
+import { useCatalog } from "./catalog";
 
 export default function StylesRail() {
-  const [cat, setCat] = useState<StyleCategory | "all">("all");
+  const { styles, categories } = useCatalog();
+  const [cat, setCat] = useState<string>("all");
   const rail = useRef<HTMLDivElement>(null);
-  const list = cat === "all" ? STYLES : STYLES.filter((s) => s.category === cat);
+  const list = cat === "all" ? styles : styles.filter((s) => s.category === cat);
 
-  const pick = (c: StyleCategory | "all") => {
+  const pick = (c: string) => {
     setCat(c);
     rail.current?.scrollTo({ left: 0, behavior: "smooth" });
   };
@@ -18,7 +19,7 @@ export default function StylesRail() {
     <>
       <div className="rail mb-4 gap-2" role="toolbar" aria-label="Filter styles">
         <button className="chip" aria-pressed={cat === "all"} onClick={() => pick("all")}>All</button>
-        {CATEGORIES.map((c) => (
+        {categories.map((c) => (
           <button key={c.id} className="chip" aria-pressed={cat === c.id} onClick={() => pick(c.id)}>{c.label}</button>
         ))}
       </div>

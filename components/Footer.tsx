@@ -4,14 +4,15 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { useStore } from "./store";
-import { ArrowIcon, ChevronIcon, InstagramIcon, PinIcon } from "./Icons";
-import { SITE } from "@/lib/site";
-import { COLLECTIONS } from "@/lib/products";
-import { STYLES } from "@/lib/styles";
+import { useCatalog } from "./catalog";
+import { ArrowIcon, ChevronIcon, PinIcon } from "./Icons";
+import { SITE, igHandle, instagramDM, instagramUrl } from "@/lib/site";
 
 // Lilac newsletter + footer, as on Sunviya ("JOIN THE SUNVIYA WAVE…").
 export default function Footer() {
   const { book } = useStore();
+  const { settings, collections, styles } = useCatalog();
+  const ig = instagramUrl(settings.instagramHandle);
   const productPage = usePathname().startsWith("/shop/");
   const [email, setEmail] = useState("");
   const [sent, setSent] = useState(false);
@@ -20,30 +21,29 @@ export default function Footer() {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!/^\S+@\S+\.\S+$/.test(email)) return;
-    if (SITE.newsletterEndpoint) {
+    if (settings.newsletterEndpoint) {
       try {
-        await fetch(SITE.newsletterEndpoint, { method: "POST", headers: { Accept: "application/json", "Content-Type": "application/json" }, body: JSON.stringify({ email }) });
+        await fetch(settings.newsletterEndpoint, { method: "POST", headers: { Accept: "application/json", "Content-Type": "application/json" }, body: JSON.stringify({ email }) });
       } catch {}
     }
     setSent(true);
   };
 
   const groups: { title: string; links: { label: string; href?: string; onClick?: () => void; external?: boolean }[] }[] = [
-    { title: "Shop", links: [{ label: "Shop all", href: "/shop" }, ...COLLECTIONS.map((c) => ({ label: c.name, href: `/shop?c=${c.id}` }))] },
-    { title: "Booking", links: [{ label: "The menu", href: "/menu" }, { label: "Book a style", onClick: () => book(STYLES[0].slug) }, { label: "Good to know", href: "/menu#good-to-know" }] },
-    { title: "Contact", links: [{ label: `DM ${SITE.instagramHandle}`, href: SITE.instagramDM, external: true }, { label: "Instagram", href: SITE.instagram, external: true }] },
+    { title: "Shop", links: [{ label: "Shop all", href: "/shop" }, ...collections.map((c) => ({ label: c.name, href: `/shop?c=${c.id}` }))] },
+    { title: "Booking", links: [{ label: "The menu", href: "/menu" }, ...(styles[0] ? [{ label: "Book a style", onClick: () => book(styles[0].slug) }] : []), { label: "Good to know", href: "/menu#good-to-know" }] },
+    { title: "Contact", links: [{ label: `DM @${igHandle(settings.instagramHandle)}`, href: instagramDM(settings.instagramHandle), external: true }, { label: "Instagram", href: ig, external: true }, ...(settings.email ? [{ label: settings.email, href: `mailto:${settings.email}`, external: true }] : [])] },
   ];
 
   return (
     <footer className="bg-lilac text-abyss">
-      <div className="px-5 pb-8 pt-12">
-        <h2 className="font-display text-[1.75rem] uppercase leading-[1.02]">
-          Join the royal court — get early drops, open slots &amp; exclusive releases.
-        </h2>
+      <div className="px-5 pb-8 pt-10">
+        <h2 className="font-display text-[1.9rem] uppercase leading-none">Join the royal court</h2>
+        <p className="mt-2 text-[0.95rem] text-abyss/75">Early drops, open slots and exclusive releases — straight to your inbox.</p>
         {sent ? (
-          <p className="mt-6 flex h-14 items-center rounded-full border-2 border-abyss px-6 font-display uppercase">Welcome to the court 👑</p>
+          <p className="mt-5 flex h-14 items-center rounded-full border-2 border-abyss px-6 font-display uppercase">Welcome to the court 👑</p>
         ) : (
-          <form onSubmit={submit} className="mt-6 flex h-14 items-center rounded-full border-2 border-abyss bg-white/70 pl-6 pr-1.5">
+          <form onSubmit={submit} className="mt-5 flex h-14 items-center rounded-full border-2 border-abyss bg-white/70 pl-6 pr-1.5">
             <input
               type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
               placeholder="Email address" aria-label="Email address" autoComplete="email"
@@ -79,12 +79,9 @@ export default function Footer() {
         ))}
       </div>
 
-      <div className={`mt-2 border-t border-abyss/80 px-5 pt-6 text-center ${productPage ? "pb-32" : "pb-10"}`}>
-        <div className="flex items-center justify-center gap-3">
-          <a href={SITE.instagram} target="_blank" rel="noopener noreferrer" aria-label="Instagram" className="grid h-11 w-11 place-items-center rounded-full bg-abyss text-lilac"><InstagramIcon /></a>
-        </div>
-        <p className="mt-4 flex items-center justify-center gap-1.5 text-sm text-abyss/70"><PinIcon /> {SITE.serviceArea}</p>
-        <p className="mt-2 text-sm text-abyss/70">
+      <div className={`mt-2 border-t border-abyss/80 px-5 pt-5 text-center ${productPage ? "pb-32" : "pb-8"}`}>
+        <p className="flex items-center justify-center gap-1.5 text-sm text-abyss/70"><PinIcon /> {settings.serviceArea}</p>
+        <p className="mt-1.5 text-sm text-abyss/70">
           © {new Date().getFullYear()} <span className="font-display uppercase text-abyss">{SITE.fullName}</span>
         </p>
       </div>

@@ -5,7 +5,7 @@ import { useState } from "react";
 import { useStore } from "./store";
 import { PauseIcon, PlayIcon } from "./Icons";
 import TheDeep from "./deep/TheDeep";
-import { STYLES } from "@/lib/styles";
+import { useCatalog } from "./catalog";
 
 /**
  * Full-bleed living hero with the headline bottom-left (the Sunviya layout).
@@ -13,11 +13,12 @@ import { STYLES } from "@/lib/styles";
  */
 export default function Hero() {
   const { book } = useStore();
+  const { styles } = useCatalog();
   const [playing, setPlaying] = useState(true);
 
   return (
     <section
-      className="relative h-[84svh] min-h-[560px] max-h-[860px] touch-pan-y select-none overflow-hidden bg-abyss bg-[url('/media/deep-poster.jpg')] bg-cover bg-center"
+      className="relative h-[76svh] min-h-[520px] max-h-[760px] touch-pan-y select-none overflow-hidden bg-abyss bg-[url('/media/deep-poster.jpg')] bg-cover bg-center"
       aria-label="RAW — Royal Art Weaves"
     >
       <TheDeep paused={!playing} />
@@ -28,12 +29,12 @@ export default function Hero() {
         <h1 className="font-display text-[3.05rem] uppercase leading-[0.92] text-bone drop-shadow-[0_4px_24px_rgba(0,0,0,0.5)]">
           Styled like<br /><span className="text-lilac">royalty.</span>
         </h1>
-        <p className="mt-3 max-w-[22rem] font-display text-[0.9rem] uppercase leading-snug text-bone/90">
-          Braids, twists, barrel twists &amp; hair art by RAW — Royal Art Weaves. We come to you.
+        <p className="mt-3 max-w-[21rem] text-[1rem] leading-snug text-bone/85">
+          Braids, twists &amp; hair art by RAW — booked by DM, done at your place.
         </p>
         <div className="mt-5 flex gap-2.5">
-          <button className="pill pill-lilac flex-1" onClick={() => book(STYLES[0].slug)}>Book a style</button>
-          <Link href="/shop" className="pill pill-ghost flex-1">Shop durags</Link>
+          {styles[0] && <button className="pill pill-lilac flex-1" onClick={() => book(styles[0].slug)}>Book a style</button>}
+          <Link href="/shop" className="pill pill-ghost flex-1">Shop</Link>
         </div>
       </div>
 

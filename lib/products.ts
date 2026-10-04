@@ -1,33 +1,17 @@
 /**
- * The shop. Prices (DA) are PLACEHOLDERS until the artist confirms them.
- * Images are 3D renders in /public/renders — swap for product photos any time.
+ * The starting shop — edited from /admin → Catalog → Products once the site is live.
+ * Images are 3D renders in /public/renders — swap for product photos from the admin.
  */
-export type Variant = { id: string; name: string; swatch: string; image: string };
+import type { Collection, Product, Variant } from "./types";
 
-export type Product = {
-  slug: string;
-  name: string;
-  collection: CollectionId;
-  price: number;
-  compareAt?: number;
-  tag?: "New" | "Sale" | "Bestseller";
-  blurb: string;
-  description: string;
-  details: string[];
-  care: string[];
-  variants: Variant[];
-};
-
-export type CollectionId = "durags" | "bonnets" | "hair-care" | "accessories";
-
-export const COLLECTIONS: { id: CollectionId; name: string; image: string; line: string }[] = [
+export const DEFAULT_COLLECTIONS: Collection[] = [
   { id: "durags", name: "Durags", image: "/renders/durag-royal.webp", line: "Silk & velvet" },
   { id: "bonnets", name: "Bonnets", image: "/renders/bonnet.webp", line: "Protect the work" },
   { id: "hair-care", name: "Hair Care", image: "/renders/crown-oil.webp", line: "Oils & tools" },
   { id: "accessories", name: "Accessories", image: "/renders/cuffs.webp", line: "Cuffs & beads" },
 ];
 
-export const PRODUCTS: Product[] = [
+export const DEFAULT_PRODUCTS: Product[] = [
   {
     slug: "silky-durag",
     name: "Silky Durag",
@@ -110,5 +94,7 @@ export const PRODUCTS: Product[] = [
   },
 ];
 
-export const getProduct = (slug: string) => PRODUCTS.find((p) => p.slug === slug);
-export const getVariant = (p: Product, id?: string) => p.variants.find((v) => v.id === id) ?? p.variants[0];
+/** first matching product (hidden ones included — callers filter) */
+export const findProduct = (list: Product[], slug: string) => list.find((p) => p.slug === slug);
+export const findVariant = (p: Product, id?: string): Variant => p.variants.find((v) => v.id === id) ?? p.variants[0];
+export const isAvailable = (p: Product, v?: Variant) => !p.soldOut && !(v ?? p.variants[0])?.soldOut;

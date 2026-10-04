@@ -5,12 +5,11 @@ import Image from "next/image";
 import { useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { lineInfo, useStore } from "./store";
+import { useCatalog } from "./catalog";
 import { ArrowIcon, CheckIcon, CloseIcon, InstagramIcon, MinusIcon, PinIcon, PlusIcon, SearchIcon, WhatsAppIcon } from "./Icons";
 import BookingSheet from "./BookingSheet";
 import { Handle } from "./Handle";
-import { SITE, price, whatsappLink } from "@/lib/site";
-import { STYLES } from "@/lib/styles";
-import { PRODUCTS, COLLECTIONS } from "@/lib/products";
+import { fit, instagramUrl, price, whatsappLink } from "@/lib/site";
 import { orderMessage, sendViaInstagram } from "@/lib/messages";
 
 const EASE = [0.22, 1, 0.36, 1] as const;
@@ -53,11 +52,12 @@ export default function Overlays() {
 /* --------------------------------------------------------------- menu */
 function MenuDrawer({ onClose }: { onClose: () => void }) {
   const { book } = useStore();
+  const { styles, collections, settings } = useCatalog();
   const links = [
     { href: "/", label: "Home" },
     { href: "/menu", label: "The Menu" },
     { href: "/shop", label: "Shop all" },
-    ...COLLECTIONS.map((c) => ({ href: `/shop?c=${c.id}`, label: c.name })),
+    ...collections.map((c) => ({ href: `/shop?c=${c.id}`, label: c.name })),
   ];
   return (
     <>
@@ -83,11 +83,11 @@ function MenuDrawer({ onClose }: { onClose: () => void }) {
           ))}
         </nav>
         <div className="mt-auto space-y-4 px-6 pb-8 pt-8">
-          <button className="pill pill-lilac w-full" onClick={() => book(STYLES[0].slug)}>Book a style</button>
-          <a href={SITE.instagram} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 font-display text-lg uppercase text-bone">
+          {styles[0] && <button className="pill pill-lilac w-full" onClick={() => book(styles[0].slug)}>Book a style</button>}
+          <a href={instagramUrl(settings.instagramHandle)} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 font-display text-lg uppercase text-bone">
             <InstagramIcon /> <Handle />
           </a>
-          <p className="flex items-center gap-2 text-sm text-mute"><PinIcon /> {SITE.serviceArea}</p>
+          <p className="flex items-center gap-2 text-sm text-mute"><PinIcon /> {settings.serviceArea}</p>
         </div>
       </motion.aside>
     </>
@@ -97,10 +97,11 @@ function MenuDrawer({ onClose }: { onClose: () => void }) {
 /* ------------------------------------------------------------- search */
 function SearchPanel({ onClose }: { onClose: () => void }) {
   const { book } = useStore();
+  const cat = useCatalog();
   const [q, setQ] = useState("");
   const query = q.trim().toLowerCase();
-  const styles = useMemo(() => STYLES.filter((s) => !query || `${s.name} ${s.category} ${s.blurb}`.toLowerCase().includes(query)), [query]);
-  const products = useMemo(() => PRODUCTS.filter((p) => !query || `${p.name} ${p.collection} ${p.blurb} ${p.variants.map((v) => v.name).join(" ")}`.toLowerCase().includes(query)), [query]);
+  const styles = useMemo(() => cat.styles.filter((s) => !query || `${s.name} ${s.category} ${s.blurb}`.toLowerCase().includes(query)), [cat.styles, query]);
+  const products = useMemo(() => cat.products.filter((p) => !query || `${p.name} ${p.collection} ${p.blurb} ${p.variants.map((v) => v.name).join(" ")}`.toLowerCase().includes(query)), [cat.products, query]);
 
   return (
     <>
@@ -126,7 +127,7 @@ function SearchPanel({ onClose }: { onClose: () => void }) {
             <p className="eyebrow mb-2">Styles</p>
             {styles.map((s) => (
               <button key={s.slug} onClick={() => book(s.slug)} className="flex w-full items-center gap-3 border-b border-white/[0.06] py-2.5 text-left">
-                <span className="stage relative h-14 w-14 shrink-0 overflow-hidden rounded-xl"><Image src={s.render} alt="" fill sizes="56px" className="object-contain" /></span>
+                <span className="stage relative h-14 w-14 shrink-0 overflow-hidden rounded-xl"><Image src={s.render} alt="" fill sizes="56px" className={fit(s.render)} /></span>
                 <span className="flex-1"><span className="block font-display text-base uppercase">{s.name}</span><span className="text-sm text-mute">from {price(s.from)} · {s.duration}</span></span>
                 <ArrowIcon className="h-4 w-4 text-lilac" />
               </button>
@@ -138,7 +139,7 @@ function SearchPanel({ onClose }: { onClose: () => void }) {
             <p className="eyebrow mb-2">Shop</p>
             {products.map((p) => (
               <Link key={p.slug} href={`/shop/${p.slug}`} onClick={onClose} className="flex items-center gap-3 border-b border-white/[0.06] py-2.5">
-                <span className="stage relative h-14 w-14 shrink-0 overflow-hidden rounded-xl"><Image src={p.variants[0].image} alt="" fill sizes="56px" className="object-contain" /></span>
+                <span className="stage relative h-14 w-14 shrink-0 overflow-hidden rounded-xl"><Image src={p.variants[0].image} alt="" fill sizes="56px" className={fit(p.variants[0].image)} /></span>
                 <span className="flex-1"><span className="block font-display text-base uppercase">{p.name}</span><span className="text-sm text-mute">{price(p.price)}</span></span>
                 <ArrowIcon className="h-4 w-4 text-lilac" />
               </Link>
@@ -154,8 +155,10 @@ function SearchPanel({ onClose }: { onClose: () => void }) {
 /* --------------------------------------------------------------- cart */
 function CartDrawer({ onClose }: { onClose: () => void }) {
   const { lines, subtotal, setQty, count, notify } = useStore();
-  const msg = orderMessage(lines, subtotal);
-  const wa = whatsappLink(msg);
+  const { products, settings, collections } = useCatalog();
+  const msg = orderMessage(products, lines, subtotal);
+  const wa = whatsappLink(settings.whatsapp, msg);
+  const empty = collections[0]?.image ?? "/renders/durag-royal.webp";
 
   return (
     <>
@@ -172,7 +175,7 @@ function CartDrawer({ onClose }: { onClose: () => void }) {
 
         {lines.length === 0 ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-5 px-8 text-center">
-            <div className="stage relative h-40 w-40 overflow-hidden rounded-full"><Image src="/renders/durag-royal.webp" alt="" fill sizes="160px" className="object-contain" /></div>
+            <div className="stage relative h-40 w-40 overflow-hidden rounded-full"><Image src={empty} alt="" fill sizes="160px" className={fit(empty)} /></div>
             <p className="font-display text-2xl uppercase">Your bag is empty</p>
             <p className="text-sm text-mute">Silky durags, bonnets and hair care — made for the work.</p>
             <Link href="/shop" onClick={onClose} className="pill pill-lilac">Shop the drop</Link>
@@ -181,11 +184,11 @@ function CartDrawer({ onClose }: { onClose: () => void }) {
           <>
             <ul className="flex-1 overflow-y-auto px-4">
               {lines.map((l) => {
-                const { product: p, variant: v } = lineInfo(l);
+                const { product: p, variant: v } = lineInfo(products, l);
                 return (
                   <li key={l.slug + l.variant} className="flex gap-3 border-b border-white/[0.06] py-4">
                     <Link href={`/shop/${p.slug}?v=${v.id}`} onClick={onClose} className="stage relative h-24 w-24 shrink-0 overflow-hidden rounded-2xl">
-                      <Image src={v.image} alt={p.name} fill sizes="96px" className="object-contain" />
+                      <Image src={v.image} alt={p.name} fill sizes="96px" className={fit(v.image)} />
                     </Link>
                     <div className="flex flex-1 flex-col">
                       <p className="font-display text-base uppercase leading-tight">{p.name}</p>
@@ -213,7 +216,7 @@ function CartDrawer({ onClose }: { onClose: () => void }) {
                 Checkout <ArrowIcon className="h-4 w-4" />
               </Link>
               <div className="flex items-center justify-center gap-4 pb-1 text-sm text-mute">
-                <button className="flex items-center gap-1.5 underline-offset-4 hover:underline" onClick={async () => { await sendViaInstagram(msg); notify("Order copied — paste it in the DM"); }}>
+                <button className="flex items-center gap-1.5 underline-offset-4 hover:underline" onClick={async () => { await sendViaInstagram(msg, settings.instagramHandle); notify("Order copied — paste it in the DM"); }}>
                   <InstagramIcon className="h-4 w-4" /> Order by DM
                 </button>
                 {wa && <a className="flex items-center gap-1.5" href={wa} target="_blank" rel="noopener noreferrer"><WhatsAppIcon className="h-4 w-4" /> WhatsApp</a>}

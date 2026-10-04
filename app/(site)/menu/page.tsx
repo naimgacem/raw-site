@@ -1,13 +1,14 @@
 import type { Metadata } from "next";
 import MenuList from "@/components/MenuList";
-import { BOOKING_NOTES } from "@/lib/styles";
+import { getPublicCatalog } from "@/lib/catalog";
 
 export const metadata: Metadata = {
   title: "The Menu — styles & prices",
   description: "Knotless, box braids, cornrows, Fulani, two-strand twists, barrel twists and custom hair art. Starting prices, durations and booking by DM.",
 };
 
-export default function MenuPage() {
+export default async function MenuPage() {
+  const { notes } = await getPublicCatalog();
   return (
     <>
       <header className="relative overflow-hidden px-4 pb-8 pt-10 text-center">
@@ -21,17 +22,17 @@ export default function MenuPage() {
 
       <MenuList />
 
-      <section id="good-to-know" className="scroll-mt-20 px-4 pb-14 pt-6">
+      {notes.length > 0 && <section id="good-to-know" className="scroll-mt-20 px-4 pb-14 pt-6">
         <h2 className="h-section mb-6">Good to know</h2>
         <div className="grid grid-cols-2 gap-2.5">
-          {BOOKING_NOTES.map((n) => (
+          {notes.map((n) => (
             <div key={n.title} className="rounded-2xl border border-white/[0.07] bg-ink2 p-4">
               <h3 className="font-display text-base uppercase leading-tight text-lilac">{n.title}</h3>
               <p className="mt-2 text-[0.85rem] leading-snug text-mute">{n.text}</p>
             </div>
           ))}
         </div>
-      </section>
+      </section>}
     </>
   );
 }
