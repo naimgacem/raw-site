@@ -95,7 +95,8 @@ Every render is procedural (three.js) and made offline into `public/renders/*.we
 ```bash
 npm run render                 # all illustrations (needs Chrome installed)
 npm run render -- art cornrows # just some
-npm run hero-video             # the 3D braids loop behind the "We come to you" banner (needs: pip install imageio-ffmpeg pillow)
+npm run weave-video            # "The Weave" loop behind "We come to you" (uses the graphics card; needs: pip install imageio-ffmpeg)
+npm run weave-video -- --preview  # three quick stills into tools/out/weave-*.jpg
 node tools/deep-poster.mjs     # hero poster from the shader
 python tools/logo.py           # logo cut-outs from rawlogo.png
 python tools/brand-assets.py   # logo plate + social share image

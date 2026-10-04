@@ -7,8 +7,8 @@
     "build": "next build",
     "start": "next start",
     "render": "node tools/render.mjs",
-    "hero-video": "node tools/hero-video.mjs",
-    "qa:admin": "node tools/qa-admin.mjs"
+    "qa:admin": "node tools/qa-admin.mjs",
+    "weave-video": "node tools/weave-video.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.2",

@@ -11,7 +11,7 @@ import { instagramUrl } from "@/lib/site";
 import { Handle } from "./Handle";
 
 // Muted background loop that only plays while on screen (and never with reduced motion).
-function LoopVideo({ src, poster }: { src: string; poster: string }) {
+function LoopVideo({ src, poster, className = "" }: { src: string; poster: string; className?: string }) {
   const ref = useRef<HTMLVideoElement>(null);
   useEffect(() => {
     const v = ref.current;
@@ -20,7 +20,7 @@ function LoopVideo({ src, poster }: { src: string; poster: string }) {
     io.observe(v);
     return () => io.disconnect();
   }, []);
-  return <video ref={ref} src={src} poster={poster} muted loop playsInline preload="none" aria-hidden className="absolute inset-0 h-full w-full object-cover opacity-70" />;
+  return <video ref={ref} src={src} poster={poster} muted loop playsInline preload="none" aria-hidden className={`absolute inset-0 h-full w-full object-cover ${className}`} />;
 }
 
 /** Section header: small label + title on the left, "See all" on the right — no extra button row below. */
@@ -40,30 +40,33 @@ export function SectionHead({ eyebrow, title, href, link = "See all" }: { eyebro
   );
 }
 
-/* How booking works, over the braids video — one screen, three steps, one button. */
+/* How booking works. Behind it, "The Weave": the octopus's arms plaiting a braid and curling free
+   (tools/weave-video.mjs). The arms live on the right; the words sit on the dark water to their left. */
 export function HowItWorks() {
   const { book } = useStore();
   const { styles } = useCatalog();
   const steps = ["Pick a style", "Send the DM", "Get styled"];
   return (
-    <section className="relative overflow-hidden" aria-label="How booking works">
-      <LoopVideo src="/media/braids-loop.mp4" poster="/media/braids-poster.jpg" />
-      <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(7,6,8,0.75),rgba(26,6,48,0.6)_45%,rgba(7,6,8,0.92)_85%,#070608)]" />
-      <div className="relative px-5 py-12 text-center">
-        <Reveal>
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-black/40 px-3 py-1.5 font-sans text-xs font-semibold uppercase tracking-[0.18em] text-lilac backdrop-blur"><PinIcon className="h-3.5 w-3.5" /> Déplacement</span>
-          <h2 className="mt-4 font-display text-[2.6rem] uppercase leading-[0.92] text-bone drop-shadow-[0_4px_30px_rgba(0,0,0,0.7)]">We come<br />to you.</h2>
-          <p className="mx-auto mt-3 max-w-[19rem] text-[0.95rem] leading-snug text-bone/80">No salon, no waiting room — the chair, the hands and the art, at your door.</p>
+    <section className="relative overflow-hidden bg-abyss" aria-label="How booking works">
+      <LoopVideo src="/media/weave-loop.mp4" poster="/media/weave-poster.jpg" className="object-[62%_50%]" />
+      {/* legibility: the water darkens toward the words, and fades into the sections above and below */}
+      <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(7,6,8,0.88)_0%,rgba(7,6,8,0.55)_36%,rgba(7,6,8,0)_60%)]" />
+      <div className="absolute inset-0 bg-[linear-gradient(180deg,#070608_0%,rgba(7,6,8,0)_14%,rgba(7,6,8,0)_86%,#070608_100%)]" />
+      <div className="relative flex min-h-[33rem] flex-col px-5 pb-10 pt-14">
+        <Reveal className="max-w-[14rem]">
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-black/45 px-3 py-1.5 font-sans text-xs font-semibold uppercase tracking-[0.18em] text-lilac backdrop-blur"><PinIcon className="h-3.5 w-3.5" /> Déplacement</span>
+          <h2 className="mt-4 font-display text-[2.6rem] uppercase leading-[0.92] text-bone drop-shadow-[0_4px_30px_rgba(0,0,0,0.8)]">We come<br />to you.</h2>
+          <p className="mt-3 text-[0.95rem] leading-snug text-bone/80">No salon, no waiting room — the chair, the hands and the art, at your door.</p>
         </Reveal>
-        <ol className="mt-7 grid grid-cols-3 gap-2">
+        <ol className="mt-auto space-y-2.5 pt-8">
           {steps.map((t, i) => (
-            <Reveal as="li" key={t} delay={i * 80} className="rounded-2xl border border-white/[0.08] bg-black/45 px-2 pb-3 pt-3.5 backdrop-blur-md">
-              <span className="block font-sans text-[1.35rem] font-bold leading-none tracking-tight text-violet">0{i + 1}</span>
-              <span className="mt-1.5 block font-display text-[0.8rem] uppercase leading-tight">{t}</span>
+            <Reveal as="li" key={t} delay={i * 80} className="flex items-center gap-3">
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-violet/50 bg-black/50 font-sans text-[0.85rem] font-bold text-lilac backdrop-blur">0{i + 1}</span>
+              <span className="font-display text-[1rem] uppercase leading-tight drop-shadow-[0_2px_12px_rgba(0,0,0,0.9)]">{t}</span>
             </Reveal>
           ))}
         </ol>
-        {styles[0] && <button className="pill pill-lilac mt-6 w-full" onClick={() => book(styles[0].slug)}>Book your slot</button>}
+        {styles[0] && <button className="pill pill-lilac mt-7 self-start px-8" onClick={() => book(styles[0].slug)}>Book your slot</button>}
       </div>
     </section>
   );

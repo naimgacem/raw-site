@@ -12,7 +12,7 @@ const CHROME_CANDIDATES = [
   "/usr/bin/google-chrome",
 ].filter(Boolean);
 
-const TYPES = { ".html": "text/html", ".js": "text/javascript", ".mjs": "text/javascript", ".png": "image/png", ".json": "application/json" };
+const TYPES = { ".html": "text/html", ".js": "text/javascript", ".mjs": "text/javascript", ".png": "image/png", ".json": "application/json", ".ttf": "font/ttf" };
 
 export function serve(root, port = 4791) {
   const server = http.createServer((req, res) => {
@@ -26,12 +26,16 @@ export function serve(root, port = 4791) {
   return new Promise((r) => server.listen(port, () => r(server)));
 }
 
-export async function launch() {
+// gpu: use the real graphics card (much faster for heavy renders); default is the software renderer
+export async function launch({ gpu = false } = {}) {
   const executablePath = CHROME_CANDIDATES.find((p) => fs.existsSync(p));
   if (!executablePath) throw new Error("Chrome not found — set CHROME_PATH");
   return puppeteer.launch({
     executablePath,
     headless: true,
-    args: ["--enable-webgl", "--ignore-gpu-blocklist", "--enable-unsafe-swiftshader", "--use-angle=swiftshader"],
+    protocolTimeout: 600000,
+    args: gpu
+      ? ["--enable-webgl", "--ignore-gpu-blocklist", "--enable-gpu", "--use-angle=" + (process.platform === "win32" ? "d3d11" : "default")]
+      : ["--enable-webgl", "--ignore-gpu-blocklist", "--enable-unsafe-swiftshader", "--use-angle=swiftshader"],
   });
 }

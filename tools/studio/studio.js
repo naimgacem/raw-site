@@ -1,6 +1,6 @@
 // RAW 3D studio — procedurally sculpts a mannequin bust, weaves real 3-strand
 // braids / twists over its scalp, and models the shop products.
-// Driven headlessly by tools/render.mjs and tools/hero-video.mjs.
+// Driven headlessly by tools/render.mjs.
 import * as THREE from "three";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { MarchingCubes } from "three/addons/objects/MarchingCubes.js";
