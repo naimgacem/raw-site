@@ -39,51 +39,69 @@ float sdVesica(vec2 p, float r, float d){
 vec3 eye(vec2 p, vec2 c, float side, float open, float glow, inout float mask){
   vec2 q = p - c;
   q.x *= side;
-  float a = 0.38; // inner corner dips toward the centre
+  float a = 0.5; // inner corner dips toward the centre: the angry V
   q = mat2(cos(a), -sin(a), sin(a), cos(a)) * q;
   float o = max(open, 0.035);
   float sx = 0.72 + 0.28 * smoothstep(0.0, 0.7, o); // lids shorten the eye as they close
   float d = sdVesica(vec2(q.y / o, q.x / sx), 0.0856, 0.0706) * min(o, sx);
-  vec2 hc = q - vec2(uLook.x * side * 0.013, uLook.y * 0.0045 * o);
-  vec2 hs = hc / vec2(0.024, 0.0095 * o + 0.001);
+  // a straight brow cuts the top, steeper still toward the centre: a scowl, not a stare
+  d = max(d, (q.y - (0.0085 + 0.09 * q.x) * o) * 0.996);
+  vec2 hc = q - vec2(uLook.x * side * 0.013, uLook.y * 0.0045 * o - 0.003 * o);
+  vec2 hs = hc / vec2(0.024, 0.0085 * o + 0.001);
   float core = exp(-dot(hs, hs));
-  float inside = smoothstep(0.0045, -0.003, d);
+  float inside = smoothstep(0.0035, -0.0025, d);
   mask = max(mask, inside);
   // the halo shrinks with the lids, so a blink reads as a blink, not a flare
   float lid = smoothstep(0.05, 0.6, o);
-  float nearG = exp(-max(d, 0.0) * 62.0) * (0.35 + 0.65 * lid);
+  float nearG = exp(-max(d, 0.0) * 85.0) * (0.35 + 0.65 * lid);
   float farG = exp(-max(d, 0.0) * 11.0) * lid;
   vec3 violet = vec3(0.62, 0.16, 1.0);
-  vec3 halo = violet * (nearG * 0.9 + farG * 0.26) * glow;
-  vec3 iris = mix(violet * 1.7, vec3(1.0, 0.95, 1.0), core) * inside * (0.9 + 0.9 * core) * glow;
+  vec3 halo = violet * (nearG * 1.05 + farG * 0.26) * glow;
+  vec3 iris = mix(violet * 1.8, vec3(1.0, 0.95, 1.0), core) * inside * (0.95 + 0.95 * core) * glow;
   return halo + iris;
 }
 
-// Eight arms fanning from under the mantle; returns distance, writes the white "logo stroke".
-float tentacles(vec2 p, vec2 O, float t, out float stroke){
+// How far an arm has swung at distance r from its root: it spreads, then the tip hooks up and out.
+// The inner arms get the strongest hook so every tip ends curling upward, like the logo.
+float armCurl(float r, float len, float j, float fi, float side, float t){
+  float u = clamp(r / len, 0.0, 1.0);
+  float u2 = u * u;
+  return side * ((0.12 + j * 0.5) * u2 + (0.55 - 0.15 * j) * u2 * u2 * u)
+       + 0.16 * sin(r * 10.0 - t * (0.62 + 0.1 * j) + fi * 1.9) * u
+       + 0.05 * sin(t * 0.45 + fi);
+}
+
+// Eight heavy arms fanning from under the mantle; returns distance, writes the white "logo stroke".
+float tentacles(vec2 p, vec2 O, float t, out float stroke, out float vol){
   vec2 q = p - O;
   float r = length(q);
   float th = atan(q.y, q.x);
   float d = 1e3;
   stroke = 0.0;
+  vol = 0.0;
   for (int i = 0; i < 8; i++){
     float fi = float(i);
     float side = i < 4 ? -1.0 : 1.0;
     float j = mod(fi, 4.0);
     float base = -PI * 0.5 + side * (0.2 + j * 0.39);
-    float len = 0.29 + 0.05 * sin(fi * 3.1) + j * 0.035;
+    float len = 0.29 + 0.05 * sin(fi * 3.1) + j * 0.035 + 0.045 * (1.0 - j / 3.0); // inner arms longer: the hook costs them reach
     float u = clamp(r / len, 0.0, 1.0);
-    float curl = side * (0.12 + j * 0.5) * u * u
-               + 0.24 * sin(r * 13.0 - t * (0.75 + 0.12 * j) + fi * 1.9) * u
-               + 0.05 * sin(t * 0.45 + fi);
+    float curl = armCurl(r, len, j, fi, side, t);
     float da = th - (base + curl);
     da = mod(da + PI, 2.0 * PI) - PI;
-    float w = 0.034 * pow(1.0 - u, 0.85) + 0.003;
-    float dd = abs(da) * r - w;
+    // measure across the arm, not around the circle, so the curled parts keep their full thickness
+    float slope = (armCurl(r + 0.004, len, j, fi, side, t) - curl) / 0.004 * r;
+    float across = da * r / sqrt(1.0 + slope * slope);
+    // muscular: full through the upper arm with a swell, then a blunt taper
+    float w = 0.036 * pow(1.0 - u, 0.55) * (1.0 + 0.25 * exp(-pow((u - 0.28) * 4.5, 2.0))) + 0.005;
+    float dd = abs(across) - w;
     if (r > len) dd = max(dd, r - len);
     d = min(d, dd);
-    float s = (da * r + side * w * 0.35) / (0.25 * w + 0.002);
+    float s = (across + side * w * 0.35) / (0.25 * w + 0.002);
     stroke = max(stroke, exp(-s * s) * smoothstep(len, len * 0.55, r) * smoothstep(0.03, 0.07, r));
+    // roundness across the arm, so each one reads as a solid limb rather than an outline
+    float c = clamp(across / w, -1.0, 1.0);
+    vol = max(vol, (1.0 - c * c) * smoothstep(len, len * 0.7, r) * smoothstep(0.05, 0.12, r));
   }
   return d;
 }
@@ -132,8 +150,8 @@ void main(){
   col += vec3(0.2, 0.09, 0.32) * w1 * w1 * 0.32;
 
   // the body: mantle + arms, a silhouette darker than the water
-  float stroke;
-  float dT = tentacles(p, C + vec2(0.0, -0.075), t, stroke);
+  float stroke, vol;
+  float dT = tentacles(p, C + vec2(0.0, -0.075), t, stroke, vol);
   float dH = sdEll(p - (C + vec2(0.0, 0.085)), vec2(0.168, 0.2) * breath);
   float body = smin(dH, dT, 0.05);
   float bw = 0.012 + 0.03 * uScroll;
@@ -141,6 +159,8 @@ void main(){
   vec3 skin = vec3(0.008, 0.005, 0.014) + deep * 0.16 * fbm(p * 7.0 + vec2(0.0, t * 0.04));
   skin += violet * 0.13 * exp(-length((p - C) * vec2(1.0, 1.6)) * 10.0);
   col = mix(col, skin, sil * 0.93);
+  // light caught in the round of each arm, faint, so they stay translucent
+  col += mix(deep, violet, 0.45) * vol * 0.17 * smoothstep(-0.005, 0.03, dH) * (1.0 - 0.5 * uScroll);
   col += vec3(0.62, 0.45, 0.95) * exp(-abs(body + 0.006) * 60.0) * (0.09 + 0.05 * sin(t * 0.6));
   col += vec3(0.85, 0.8, 1.0) * stroke * 0.11 * (1.0 - uScroll);
 
