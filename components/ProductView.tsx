@@ -24,6 +24,7 @@ export default function ProductView({ slug }: { slug: string }) {
   const items = useMemo(() => [{ slug: p.slug, variant: v.id, qty }], [p.slug, v.id, qty]);
   // the sticky bar steps aside while the order form itself is on screen
   const [formVisible, setFormVisible] = useState(false);
+  const [ordered, setOrdered] = useState(false); // after ordering, the buy bar has nothing left to do
   useEffect(() => {
     const el = form.current;
     if (!el) return;
@@ -118,7 +119,7 @@ export default function ProductView({ slug }: { slug: string }) {
         {/* cash-on-delivery order form, right on the product page */}
         <div className="mt-7">
           {available ? (
-            <OrderForm ref={form} items={items} />
+            <OrderForm ref={form} items={items} onOrdered={() => setOrdered(true)} />
           ) : (
             <div className="rounded-[24px] border border-white/[0.08] bg-ink2 p-6 text-center">
               <p className="font-display text-2xl uppercase">Sold out</p>
@@ -154,7 +155,7 @@ export default function ProductView({ slug }: { slug: string }) {
       </section>
 
       {/* sticky buy bar: add to bag, or jump to the order form */}
-      <div className={`safe-b fixed inset-x-0 bottom-0 z-30 mx-auto flex max-w-[560px] gap-2 border-t border-white/[0.08] bg-abyss/90 px-4 pt-3 backdrop-blur-xl transition-transform duration-300 ${formVisible ? "translate-y-full" : ""}`}>
+      <div className={`safe-b fixed inset-x-0 bottom-0 z-30 mx-auto flex max-w-[560px] gap-2 border-t border-white/[0.08] bg-abyss/90 px-4 pt-3 backdrop-blur-xl transition-transform duration-300 ${formVisible || ordered ? "translate-y-full" : ""}`} aria-hidden={ordered || undefined}>
         <button
           aria-label="Add to bag" disabled={!available}
           className="pill pill-ghost w-14 shrink-0 px-0 disabled:opacity-40"

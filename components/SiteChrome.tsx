@@ -3,12 +3,14 @@ import { CatalogProvider } from "./catalog";
 import AnnouncementBar from "./AnnouncementBar";
 import Header from "./Header";
 import Footer from "./Footer";
-import Overlays from "./Overlays";
+import LazyOverlays from "./LazyOverlays";
+import { preload } from "react-dom";
 import { getPublicCatalog } from "@/lib/catalog";
 
 // The public site's frame: live catalog, bag, header/footer and overlays around one phone-width column.
 export default async function SiteChrome({ children }: { children: React.ReactNode }) {
   const catalog = await getPublicCatalog();
+  preload("/brand/logo-crown-sm.webp", { as: "image", fetchPriority: "high" });
   return (
     <CatalogProvider value={catalog}>
       <StoreProvider>
@@ -19,7 +21,7 @@ export default async function SiteChrome({ children }: { children: React.ReactNo
           <main>{children}</main>
           <Footer />
         </div>
-        <Overlays />
+        <LazyOverlays />
       </StoreProvider>
     </CatalogProvider>
   );

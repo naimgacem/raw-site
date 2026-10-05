@@ -130,7 +130,7 @@ const OrderForm = forwardRef<HTMLFormElement, { items: OrderItem[]; onOrdered?: 
       <div className="rounded-[24px] border border-white/[0.08] bg-ink2 p-6 text-center">
         <p className="font-display text-2xl uppercase">Orders paused</p>
         <p className="mt-2 text-[0.95rem] leading-relaxed text-mute">{settings.closedMessage}</p>
-        <button type="button" className="pill pill-lilac mt-5 w-full" onClick={async () => { await sendViaInstagram(fallbackText(), settings.instagramHandle); notify("Copied — paste it in the DM"); }}>
+        <button type="button" className="pill pill-lilac mt-5 w-full" onClick={async () => { notify((await sendViaInstagram(fallbackText(), settings.instagramHandle)) ? "Copied — paste it in the DM" : "Opening Instagram — type your message there"); }}>
           <InstagramIcon /> Ask by DM
         </button>
       </div>
@@ -218,7 +218,7 @@ const OrderForm = forwardRef<HTMLFormElement, { items: OrderItem[]; onOrdered?: 
       {failed && (
         <div className="mt-4 rounded-xl border border-rose-400/30 bg-rose-400/10 p-3 text-sm text-rose-200">
           تعذر إرسال الطلب. حاول مرة أخرى أو أرسله عبر إنستغرام.
-          <button type="button" className="mt-2 flex items-center gap-1.5 font-bold text-bone underline" onClick={async () => { await sendViaInstagram(fallbackText(), settings.instagramHandle); notify("Copied — paste it in the DM"); }}>
+          <button type="button" className="mt-2 flex items-center gap-1.5 font-bold text-bone underline" onClick={async () => { notify((await sendViaInstagram(fallbackText(), settings.instagramHandle)) ? "Copied — paste it in the DM" : "Opening Instagram — type your message there"); }}>
             <InstagramIcon className="h-4 w-4" /> Instagram DM
           </button>
         </div>
@@ -283,7 +283,7 @@ function Confirmation({ done }: { done: Done }) {
       {!done.delivered && (
         <div className="mt-5 space-y-2">
           <p className="text-sm text-mute">لتسريع التأكيد، أرسل الطلب في رسالة:</p>
-          <button className="pill pill-lilac w-full font-sans" onClick={async () => { await sendViaInstagram(done.text, settings.instagramHandle); notify("Order copied — paste it in the DM"); }}>
+          <button className="pill pill-lilac w-full font-sans" onClick={async () => { notify((await sendViaInstagram(done.text, settings.instagramHandle)) ? "Order copied — paste it in the DM" : "Opening Instagram — type your message there"); }}>
             <InstagramIcon /> Instagram DM
           </button>
           {wa && <a href={wa} target="_blank" rel="noopener noreferrer" className="pill pill-ghost w-full font-sans"><WhatsAppIcon /> WhatsApp</a>}

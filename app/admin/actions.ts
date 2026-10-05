@@ -10,7 +10,7 @@ import { getCatalogFresh, saveCatalog } from "@/lib/catalog";
 import { assertAdmin, checkPassword, passwordSource, setPassword } from "@/lib/admin-auth";
 import { createSession, SESSION_COOKIE, SESSION_DAYS } from "@/lib/auth";
 import { normalizePhone, WILAYA_LIST } from "@/lib/algeria";
-import { notify, telegramReady } from "@/lib/server";
+import { notify, telegram, telegramConfig, telegramStored } from "@/lib/server";
 import { slugify } from "@/lib/site";
 import type {
   Booking, BookingStatus, Category, Collection, Coupon, Delivery, HairStyle, MediaItem, NewBooking, NewOrder, Note, Order, OrderLine, OrderStatus, Product, Settings,
@@ -423,8 +423,46 @@ export async function setShopOpen(patch: { ordersOpen?: boolean; bookingsOpen?: 
 
 export async function sendTestMessage() {
   return run(async () => {
-    if (!telegramReady()) fail("Telegram isn’t set up yet — add TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in Vercel.");
-    if (!(await notify("✅ RAW admin — Telegram works. New orders and booking requests will arrive here."))) fail("Telegram refused the message — check the token and chat id.");
+    if (!(await telegramConfig())) fail("Telegram isn’t connected yet.");
+    if (!(await notify("✅ RAW admin — Telegram works. New orders and booking requests will arrive here."))) fail("Telegram refused the message — reconnect the bot.");
+  });
+}
+
+/** Step 1: check the token from @BotFather and remember it. */
+export async function telegramConnect(token: string) {
+  return run(async () => {
+    const t = token.trim().replace(/\s+/g, "");
+    if (!/^\d{5,}:[A-Za-z0-9_-]{30,}$/.test(t)) fail("That doesn’t look like a bot token — copy the whole line BotFather sent (numbers:letters).");
+    const me = await telegram<{ username: string }>(t, "getMe");
+    if (!me) fail("Telegram didn’t accept that token — copy it again from @BotFather.");
+    await telegram(t, "deleteWebhook"); // so we can read the "Start" message
+    const db = await getDb();
+    await db.setConfig("telegram", { token: t, chatId: "", bot: me!.username, chat: "" });
+    return { bot: me!.username };
+  });
+}
+
+/** Step 2: after the artist pressed Start, find their chat and say hello. */
+export async function telegramFindChat() {
+  return run(async () => {
+    const t = (await telegramStored()) ?? fail("Paste the bot token first.");
+    type Update = { message?: { chat: { id: number; first_name?: string; title?: string; username?: string } }; my_chat_member?: { chat: { id: number; first_name?: string; title?: string } } };
+    const updates = (await telegram<Update[]>(t.token, "getUpdates", { timeout: 0, allowed_updates: ["message", "my_chat_member"] })) ?? [];
+    const chat = [...updates].reverse().map((u) => u.message?.chat ?? u.my_chat_member?.chat).find(Boolean);
+    if (!chat) fail(`No message yet — open @${t.bot} in Telegram, press Start (or send “hi”), then try again.`);
+    const name = chat!.title || chat!.first_name || "your chat";
+    const hello = await telegram(t.token, "sendMessage", { chat_id: chat!.id, text: "👑 RAW is connected. New orders and booking requests will arrive here, with a link to open them in your dashboard." });
+    if (!hello) fail("Found your chat but couldn’t send to it — press Start on the bot again.");
+    const db = await getDb();
+    await db.setConfig("telegram", { ...t, chatId: String(chat!.id), chat: name });
+    return { chat: name };
+  });
+}
+
+export async function telegramDisconnect() {
+  return run(async () => {
+    const db = await getDb();
+    await db.setConfig("telegram", { token: "", chatId: "", bot: "", chat: "" });
   });
 }
 

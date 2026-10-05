@@ -44,9 +44,17 @@ if (process.argv.includes("--preview")) {
   console.log("previews in tools/out/deep-*.png");
 } else {
   const tmp = path.join(root, "tools/out/deep-poster.png");
-  await shoot(tmp, 540, 980, { t: 14, look: [0.05, -0.05] });
+  // Same frame the canvas starts on (POSTER in TheDeep.tsx), wide enough to cover any hero shape when
+  // sized to the hero's height (like the shader), and rendered soft like the canvas (~0.6x, upscaled).
+  await shoot(tmp, 660, 600, { t: 14, look: [0.05, -0.05] });
   const { execFileSync } = await import("node:child_process");
-  execFileSync("python", ["-c", `from PIL import Image; Image.open(r'${tmp}').convert('RGB').save(r'${path.join(root, "public/media/deep-poster.jpg")}', quality=82, optimize=True, progressive=True)`]);
-  console.log("public/media/deep-poster.jpg");
+  execFileSync("python", ["-c", `from PIL import Image; Image.open(r'${tmp}').convert('RGB').resize((1100, 1000), Image.BICUBIC).save(r'${path.join(root, "public/media/deep-poster.jpg")}', quality=82, optimize=True, progressive=True)`]);
+  // + the inlined placeholder the hero shows while the poster loads
+  const lqip = execFileSync("python", ["-c", `import base64,io; from PIL import Image; im=Image.open(r'${path.join(root, "public/media/deep-poster.jpg")}').convert('RGB').resize((24,22), Image.LANCZOS); b=io.BytesIO(); im.save(b,'JPEG',quality=60,optimize=True); print(base64.b64encode(b.getvalue()).decode())`]).toString().trim();
+  fs.writeFileSync(path.join(root, "components/deep/lqip.ts"), `// Tiny blurred copy of /media/deep-poster.jpg, inlined so the hero is never black while the poster loads.
+// Written by tools/deep-poster.mjs — re-run it after changing the shader.
+export const POSTER_LQIP = "data:image/jpeg;base64,${lqip}";
+`);
+  console.log("public/media/deep-poster.jpg + components/deep/lqip.ts");
 }
 await b.close();

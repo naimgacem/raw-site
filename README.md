@@ -65,10 +65,9 @@ The order form (استمارة الطلب) appears on every product page and on 
 
 `/api/order` recalculates every price on the server, saves the order for the admin, and also sends it to:
 
-* **Telegram (recommended):** the order arrives on the artist's phone instantly, with a link to it in the admin.
-  1. In Telegram, talk to **@BotFather**, send `/newbot` and copy the token.
-  2. Send any message to the new bot, then open `https://api.telegram.org/bot<TOKEN>/getUpdates` and copy `chat.id`.
-  3. Add `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`, either in `.env.local` or in Vercel → Settings → Environment Variables. Admin → Settings → *Send a test message* checks it.
+* **Telegram (recommended):** every order and booking request arrives on the artist's phone instantly, with a link to it in the admin.
+  Set it up from the phone: **Admin → Settings → Notifications** walks through it (create a bot with @BotFather, paste its token, press Start — done).
+  Alternatively set `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` in Vercel.
 * **Google Sheets (optional):** set `ORDER_WEBHOOK_URL` to a Google Apps Script web app:
   ```js
   function doPost(e) {
@@ -88,7 +87,7 @@ The hero is the RAW octopus drawn live by the phone's GPU (`components/deep/`). 
 * After changing the look in `shader.ts`, run `node tools/deep-poster.mjs` to refresh `public/media/deep-poster.jpg`.
 
 ## Booking (services)
-Tap a style, pick options (the price updates live), date, area and name, then **Book via DM**. The request is saved for the admin, copied, and Instagram DMs open (`ig.me/m/<handle>`), so the client just pastes it.
+Tap a style, pick options (the price updates live), date, area, name and phone, then **Send booking request**: it goes straight to the admin (and Telegram) — nothing to copy. Clients who prefer Instagram can still DM: the sheet copies the request (with a visible confirmation) and opens the chat. Instagram has no official way to pre-type a DM, so the link also carries `?text=`, which some app versions honour.
 
 ## 3D illustrations & tools
 Every render is procedural (three.js) and made offline into `public/renders/*.webp`:

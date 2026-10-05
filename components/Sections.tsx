@@ -47,7 +47,7 @@ export function HowItWorks() {
   const { styles } = useCatalog();
   const steps = ["Pick a style", "Send the DM", "Get styled"];
   return (
-    <section className="relative overflow-hidden bg-abyss" aria-label="How booking works">
+    <section className="cv relative overflow-hidden bg-abyss" aria-label="How booking works">
       <LoopVideo src="/media/weave-loop.mp4" poster="/media/weave-poster.jpg" className="object-[62%_50%]" />
       {/* legibility: the water darkens toward the words, and fades into the sections above and below */}
       <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(7,6,8,0.88)_0%,rgba(7,6,8,0.55)_36%,rgba(7,6,8,0)_60%)]" />
@@ -84,7 +84,7 @@ export function ShopRail() {
     rail.current?.scrollTo({ left: 0, behavior: "smooth" });
   };
   return (
-    <section className="py-10" aria-label="Shop">
+    <section className="cv py-10" aria-label="Shop">
       <SectionHead eyebrow="Cash on delivery · 58 wilayas" title="Shop the drop" href={c === "all" ? "/shop" : `/shop?c=${c}`} link="Shop all" />
       {collections.length > 1 && (
         <div className="rail mb-4 gap-2" role="toolbar" aria-label="Collections">
@@ -105,11 +105,11 @@ export function ShopRail() {
 export function About() {
   const { settings } = useCatalog();
   return (
-    <section className="relative overflow-hidden border-t border-white/[0.06] px-5 py-12 text-center" aria-label="About RAW">
+    <section className="cv relative overflow-hidden border-t border-white/[0.06] px-5 py-12 text-center" aria-label="About RAW">
       <div className="pointer-events-none absolute inset-x-0 top-0 h-64 bg-[radial-gradient(50%_60%_at_50%_0%,rgba(151,31,244,0.28),transparent)]" />
       <Reveal className="relative">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/brand/logo-full.png" alt="RAW — a crowned octopus" className="mx-auto h-28 w-auto" />
+        <img src="/brand/logo-full-sm.webp" alt="RAW — a crowned octopus" width={86} height={112} loading="lazy" decoding="async" className="mx-auto h-28 w-[86px]" />
         <h2 className="mt-5 font-display text-[2rem] uppercase leading-[0.95]">Royal Art Weaves</h2>
         <p className="mx-auto mt-3 max-w-[21rem] text-[0.95rem] leading-relaxed text-bone/75">
           Every head is a canvas. Braids, twists and barrel twists turned into wearable art — clean parts, sharp patterns, finished like a crown.

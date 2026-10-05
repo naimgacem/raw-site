@@ -1,14 +1,15 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
-import { changePassword, logout, saveSettings, sendTestMessage } from "@/app/admin/actions";
+import { changePassword, logout, saveSettings, sendTestMessage, telegramConnect, telegramDisconnect, telegramFindChat } from "@/app/admin/actions";
 import { igHandle } from "@/lib/site";
 import type { Note, Settings } from "@/lib/types";
 import { useDirty, useShell } from "./Shell";
 import { Banner, Button, Card, Field, IconButton, Input, ListEditor, PageHeader, SaveBar, Section, TextArea, ToggleRow, cx, same } from "./ui";
-import { BellI, CalendarI, CheckI, DbI, DownI, LockI, LogoutI, PlusI, ShareI, StoreI, TrashI, UpI, AlertI } from "./icons";
+import { BellI, CalendarI, CheckI, DbI, DownI, ExternalI, LockI, LogoutI, PlusI, ShareI, StoreI, TrashI, UpI, AlertI } from "./icons";
 
-type Status = { db: string; dbError: string; telegram: boolean; webhook: boolean; password: string };
+type Telegram = { source: "env" | "admin" | null; bot: string; chat: string };
+type Status = { db: string; dbError: string; telegram: Telegram; webhook: boolean; password: string };
 
 export default function SettingsView({ settings, notes, status }: { settings: Settings; notes: Note[]; status: Status }) {
   const { toast } = useShell();
@@ -50,6 +51,11 @@ export default function SettingsView({ settings, notes, status }: { settings: Se
           <ToggleRow icon={<CalendarI />} title="Taking bookings" hint="When off, the booking sheet asks clients to DM for the waiting list." checked={s.bookingsOpen} onChange={(v) => set("bookingsOpen", v)} />
         </Card>
       </Section>
+
+      <div id="notifications" className="scroll-mt-20" />
+      <Notifications status={status} />
+      <div id="database" className="scroll-mt-20" />
+      <Database kind={status.db} error={status.dbError} />
 
       <Section title="Contact" hint="Used for every Instagram and WhatsApp button on the site.">
         <Card className="space-y-4 p-4">
@@ -100,10 +106,6 @@ export default function SettingsView({ settings, notes, status }: { settings: Se
 
       <SaveBar dirty={dirty} saving={busy} onSave={save} onDiscard={() => { setS(settings); setN(notes); }} />
 
-      <div id="notifications" className="scroll-mt-20" />
-      <Notifications status={status} />
-      <div id="database" className="scroll-mt-20" />
-      <Database kind={status.db} error={status.dbError} />
       <Password source={status.password} />
       <Install />
 
@@ -129,21 +131,97 @@ function StatusRow({ ok, title, text }: { ok: boolean; title: string; text: Reac
 }
 
 function Notifications({ status }: { status: Status }) {
-  const { toast } = useShell();
+  const { toast, confirm } = useShell();
   const [busy, start] = useTransition();
+  const [tg, setTg] = useState(status.telegram);
+  useEffect(() => setTg(status.telegram), [status.telegram]);
+  const [token, setToken] = useState("");
+  const connected = tg.source !== null;
+  const canSave = status.db !== "none";
+
+  const test = () => start(async () => { const r = await sendTestMessage(); toast(r.ok ? "Test sent — check Telegram" : r.error, { tone: r.ok ? "ok" : "error" }); });
+  const connect = () => start(async () => {
+    const r = await telegramConnect(token);
+    if (!r.ok) return toast(r.error, { tone: "error" });
+    setTg({ source: null, bot: r.bot, chat: "" });
+    setToken("");
+  });
+  const find = () => start(async () => {
+    const r = await telegramFindChat();
+    if (!r.ok) return toast(r.error, { tone: "error" });
+    setTg((x) => ({ ...x, source: "admin", chat: r.chat }));
+    toast("Connected — check Telegram 👑");
+  });
+  const disconnect = async () => {
+    if (!(await confirm({ title: "Disconnect Telegram?", body: "Orders keep arriving here in the dashboard, just not on Telegram.", confirm: "Disconnect", danger: true }))) return;
+    start(async () => { const r = await telegramDisconnect(); if (r.ok) setTg({ source: null, bot: "", chat: "" }); else toast(r.error, { tone: "error" }); });
+  };
+
   return (
-    <Section title="Notifications" hint="New orders and booking requests are always in this dashboard. These send a copy to your phone too.">
-      <Card className="divide-y divide-white/[0.06]">
-        <StatusRow ok={status.telegram} title="Telegram" text={status.telegram ? "Every order arrives as a Telegram message." : <>Not set up. Add <code className="font-mono">TELEGRAM_BOT_TOKEN</code> and <code className="font-mono">TELEGRAM_CHAT_ID</code> in Vercel (see the README).</>} />
-        <StatusRow ok={status.webhook} title="Google Sheets / webhook" text={status.webhook ? "Orders are also sent to your webhook." : "Optional — not set up."} />
-        <div className="p-3">
-          <Button className="w-full" icon={<BellI />} loading={busy} disabled={!status.telegram} onClick={() => start(async () => { const r = await sendTestMessage(); toast(r.ok ? "Test sent — check Telegram" : r.error, { tone: r.ok ? "ok" : "error" }); })}>
-            Send a test message
-          </Button>
-        </div>
+    <Section title="Notifications" hint="Every order and booking request is always here in the dashboard. Telegram also pings your phone the moment one comes in.">
+      <Card className="overflow-hidden">
+        {connected ? (
+          <>
+            <StatusRow ok title="Telegram connected" text={tg.source === "env" ? "Set up in Vercel. Every order arrives as a message." : <>Messages go to <b className="text-bone">{tg.chat || "your chat"}</b>{tg.bot ? <> via @{tg.bot}</> : null}.</>} />
+            <div className="flex gap-2 border-t border-white/[0.06] p-3">
+              <Button className="flex-1" icon={<BellI />} loading={busy} onClick={test}>Send a test</Button>
+              {tg.source === "admin" && <Button variant="ghost" onClick={disconnect} disabled={busy}>Disconnect</Button>}
+            </div>
+          </>
+        ) : !canSave ? (
+          <StatusRow ok={false} title="Telegram" text="Connect the database first (below) — then you can set Telegram up right here." />
+        ) : !tg.bot ? (
+          <div className="p-4">
+            <p className="font-semibold">Get every order on Telegram</p>
+            <p className="mt-1 text-[0.88rem] leading-snug text-mute">Free, takes 2 minutes, all from your phone.</p>
+            <ol className="mt-4 space-y-4 text-[0.92rem]">
+              <li className="flex gap-3">
+                <StepNo n={1} />
+                <div className="min-w-0 flex-1">
+                  <p>Open <b>@BotFather</b> in Telegram and send <code className="rounded bg-white/[0.08] px-1.5 py-0.5 font-mono text-[0.85em]">/newbot</code>. Give it any name (e.g. “RAW Orders”) and a username ending in <i>bot</i>.</p>
+                  <a href="https://t.me/BotFather" target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex h-10 items-center gap-2 rounded-full bg-white/[0.08] px-4 text-[0.88rem] font-semibold">Open @BotFather <ExternalI className="h-4 w-4" /></a>
+                </div>
+              </li>
+              <li className="flex gap-3">
+                <StepNo n={2} />
+                <div className="min-w-0 flex-1">
+                  <p>BotFather replies with a <b>token</b> (it looks like <span className="font-mono text-[0.85em]">123456:ABC…</span>). Copy it and paste it here:</p>
+                  <Input value={token} onChange={(e) => setToken(e.target.value)} placeholder="Paste the token" autoCapitalize="none" autoCorrect="off" spellCheck={false} className="mt-2 font-mono text-[0.95rem]" />
+                  <Button variant="primary" className="mt-2 w-full" loading={busy} disabled={token.trim().length < 20} onClick={connect}>Connect</Button>
+                </div>
+              </li>
+            </ol>
+          </div>
+        ) : (
+          <div className="p-4">
+            <p className="flex items-center gap-2 font-semibold"><CheckI className="h-5 w-5 text-emerald-300" /> Bot found: @{tg.bot}</p>
+            <ol className="mt-4 space-y-4 text-[0.92rem]">
+              <li className="flex gap-3">
+                <StepNo n={3} />
+                <div className="min-w-0 flex-1">
+                  <p>Open your bot and press <b>Start</b>.</p>
+                  <a href={`https://t.me/${tg.bot}?start=raw`} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex h-10 items-center gap-2 rounded-full bg-white/[0.08] px-4 text-[0.88rem] font-semibold">Open @{tg.bot} <ExternalI className="h-4 w-4" /></a>
+                </div>
+              </li>
+              <li className="flex gap-3">
+                <StepNo n={4} />
+                <div className="min-w-0 flex-1">
+                  <p>Come back here and tap:</p>
+                  <Button variant="primary" className="mt-2 w-full" loading={busy} onClick={find}>I pressed Start</Button>
+                </div>
+              </li>
+            </ol>
+            <button className="mt-4 text-[0.82rem] font-medium text-mute underline-offset-2 hover:underline" onClick={() => setTg({ source: null, bot: "", chat: "" })}>Use a different bot</button>
+          </div>
+        )}
+        {status.webhook && <div className="border-t border-white/[0.06]"><StatusRow ok title="Google Sheets / webhook" text="Orders are also sent to your webhook." /></div>}
       </Card>
     </Section>
   );
+}
+
+function StepNo({ n }: { n: number }) {
+  return <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full border border-lilac/50 text-[0.8rem] font-bold text-lilac">{n}</span>;
 }
 
 function Database({ kind, error }: { kind: string; error: string }) {

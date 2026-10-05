@@ -69,7 +69,7 @@ function MenuDrawer({ onClose }: { onClose: () => void }) {
       >
         <div className="flex h-[68px] items-center justify-between px-3">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/brand/logo-crown.png" alt="RAW" className="ml-2 h-9 w-auto" />
+          <img src="/brand/logo-crown-sm.webp" alt="RAW" width={50} height={36} className="ml-2 h-9 w-[50px]" />
           <button className="grid h-11 w-11 place-items-center rounded-full" aria-label="Close menu" onClick={onClose}><CloseIcon /></button>
         </div>
         <nav className="flex flex-col px-6 pt-4">
@@ -216,7 +216,7 @@ function CartDrawer({ onClose }: { onClose: () => void }) {
                 Checkout <ArrowIcon className="h-4 w-4" />
               </Link>
               <div className="flex items-center justify-center gap-4 pb-1 text-sm text-mute">
-                <button className="flex items-center gap-1.5 underline-offset-4 hover:underline" onClick={async () => { await sendViaInstagram(msg, settings.instagramHandle); notify("Order copied — paste it in the DM"); }}>
+                <button className="flex items-center gap-1.5 underline-offset-4 hover:underline" onClick={async () => { notify((await sendViaInstagram(msg, settings.instagramHandle)) ? "Order copied — paste it in the DM" : "Opening Instagram — type your message there"); }}>
                   <InstagramIcon className="h-4 w-4" /> Order by DM
                 </button>
                 {wa && <a className="flex items-center gap-1.5" href={wa} target="_blank" rel="noopener noreferrer"><WhatsAppIcon className="h-4 w-4" /> WhatsApp</a>}

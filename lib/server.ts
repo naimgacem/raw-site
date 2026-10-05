@@ -1,4 +1,5 @@
 // Small server helpers shared by the public API routes and the admin. Server-only.
+import { getDb } from "./db";
 import { todayKey } from "./dates";
 import type { Coupon, CouponInfo } from "./types";
 
@@ -15,22 +16,47 @@ export function checkCoupon(c: Coupon | null): CouponCheck {
   return { ok: true, coupon: { code: c.code, type: c.type, value: c.value, minOrder: c.minOrder } };
 }
 
-export const telegramReady = () => Boolean(process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_CHAT_ID);
+/* ------------------------------------------------------------ Telegram */
+// Either set in Vercel (TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID), or connected from Admin → Settings,
+// which keeps the token in the locked database.
+export type TelegramStored = { token: string; chatId: string; bot: string; chat: string };
+
+export async function telegramStored(): Promise<TelegramStored | null> {
+  try {
+    const db = await getDb();
+    const t = (await db.getConfig(["telegram"])).telegram as TelegramStored | undefined;
+    return t?.token ? t : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function telegramConfig(): Promise<{ token: string; chatId: string; source: "env" | "admin" } | null> {
+  const { TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID } = process.env;
+  if (TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_ID) return { token: TELEGRAM_BOT_TOKEN, chatId: TELEGRAM_CHAT_ID, source: "env" };
+  const t = await telegramStored();
+  return t?.chatId ? { token: t.token, chatId: t.chatId, source: "admin" } : null;
+}
+
+/** Calls the Telegram Bot API. Returns the result, or null on any failure. */
+export async function telegram<T = unknown>(token: string, method: string, body?: Record<string, unknown>): Promise<T | null> {
+  try {
+    const r = await fetch(`https://api.telegram.org/bot${token}/${method}`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body ?? {}), cache: "no-store",
+    });
+    const j = await r.json();
+    return j.ok ? (j.result as T) : null;
+  } catch {
+    return null;
+  }
+}
 
 /** Sends a message to the artist's Telegram (and the JSON webhook if given). True if anything got through. */
 export async function notify(text: string, webhook?: Record<string, unknown>) {
-  const { TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, ORDER_WEBHOOK_URL } = process.env;
   const jobs: Promise<boolean>[] = [];
-  if (TELEGRAM_BOT_TOKEN && TELEGRAM_CHAT_ID) {
-    jobs.push(
-      fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ chat_id: TELEGRAM_CHAT_ID, text, disable_web_page_preview: true }),
-        cache: "no-store",
-      }).then((r) => r.ok, () => false)
-    );
-  }
+  const tg = await telegramConfig();
+  if (tg) jobs.push(telegram(tg.token, "sendMessage", { chat_id: tg.chatId, text, disable_web_page_preview: true }).then((r) => r !== null));
+  const { ORDER_WEBHOOK_URL } = process.env;
   if (ORDER_WEBHOOK_URL && webhook) {
     jobs.push(
       fetch(ORDER_WEBHOOK_URL, {

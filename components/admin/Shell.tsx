@@ -119,7 +119,7 @@ export default function AdminShell({ counts, dbKind, children }: { counts: { ord
       <aside className="fixed inset-y-0 left-0 z-40 hidden w-60 flex-col border-r border-white/[0.06] bg-ink/60 px-3 pb-5 pt-5 lg:flex">
         <Link href="/admin" onClick={guard("/admin")} className="mb-6 flex items-center gap-2.5 px-3">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/brand/logo-crown.png" alt="" className="h-8 w-auto" />
+          <img src="/brand/logo-crown-sm.webp" alt="" width={45} height={32} className="h-8 w-[45px]" />
           <span className="font-display text-xl uppercase leading-none">Admin</span>
         </Link>
         <nav className="flex flex-col gap-0.5">

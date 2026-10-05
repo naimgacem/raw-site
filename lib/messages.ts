@@ -29,27 +29,47 @@ export function orderMessage(products: Product[], lines: { slug: string; variant
   return out.join("\n");
 }
 
+/**
+ * Copies text on every phone. The Clipboard API needs HTTPS and a fresh tap; the fallback selects a
+ * hidden text box the way iOS Safari requires (an editable box + a selection range), then copies.
+ */
 export async function copyText(text: string) {
   try {
-    await navigator.clipboard.writeText(text);
-    return true;
-  } catch {
-    const ta = document.createElement("textarea");
-    ta.value = text;
-    ta.setAttribute("readonly", "");
-    ta.style.position = "fixed";
-    ta.style.opacity = "0";
-    document.body.appendChild(ta);
-    ta.select();
-    let ok = false;
-    try { ok = document.execCommand("copy"); } catch {}
-    ta.remove();
-    return ok;
-  }
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {}
+  const ta = document.createElement("textarea");
+  ta.value = text;
+  ta.contentEditable = "true";
+  ta.style.cssText = "position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;font-size:16px";
+  document.body.appendChild(ta);
+  const range = document.createRange();
+  range.selectNodeContents(ta);
+  const sel = window.getSelection();
+  sel?.removeAllRanges();
+  sel?.addRange(range);
+  ta.setSelectionRange(0, text.length);
+  let ok = false;
+  try { ok = document.execCommand("copy"); } catch {}
+  sel?.removeAllRanges();
+  ta.remove();
+  return ok;
 }
 
-/** Copies text, then opens the Instagram DM thread (Instagram links can't pre-fill text). */
-export async function sendViaInstagram(text: string, handle: string) {
-  await copyText(text);
-  window.open(instagramDM(handle), "_blank", "noopener");
+/**
+ * Instagram DM link. Instagram has no official way to pre-type a message, but some app versions
+ * accept ?text= — it's ignored where it isn't supported, so it costs nothing to try.
+ */
+export const instagramDMWithText = (handle: string, text: string) => `${instagramDM(handle)}?text=${encodeURIComponent(text)}`;
+
+/**
+ * Copies the text and opens the Instagram DM thread — both started inside the same tap, so iOS
+ * neither blocks the new window nor refuses the copy. Resolves to whether the copy worked.
+ */
+export function sendViaInstagram(text: string, handle: string) {
+  const copied = copyText(text);
+  window.open(instagramDMWithText(handle, text), "_blank", "noopener");
+  return copied;
 }

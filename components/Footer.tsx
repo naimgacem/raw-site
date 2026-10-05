@@ -36,7 +36,7 @@ export default function Footer() {
   ];
 
   return (
-    <footer className="bg-lilac text-abyss">
+    <footer className="cv bg-lilac text-abyss">
       <div className="px-5 pb-8 pt-10">
         <h2 className="font-display text-[1.9rem] uppercase leading-none">Join the royal court</h2>
         <p className="mt-2 text-[0.95rem] text-abyss/75">Early drops, open slots and exclusive releases — straight to your inbox.</p>

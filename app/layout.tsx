@@ -4,10 +4,13 @@ import "./globals.css";
 import { SITE } from "@/lib/site";
 
 // The bold display face Sunviya uses
-const display = Caesar_Dressing({ weight: "400", subsets: ["latin"], variable: "--font-display", display: "swap" });
+// "block": headlines wait the moment it takes this (preloaded) font to arrive, instead of flashing in
+// a fallback face and jumping when it lands
+const display = Caesar_Dressing({ weight: "400", subsets: ["latin"], variable: "--font-display", display: "block" });
 const sans = Instrument_Sans({ subsets: ["latin"], variable: "--font-sans", display: "swap" });
 // Arabic for the order form (Caesar Dressing has no Arabic glyphs)
-const arabic = Tajawal({ subsets: ["arabic"], weight: ["400", "500", "700", "800"], variable: "--font-ar", display: "swap" });
+// not preloaded: only the order form uses it, so other pages don't spend bandwidth on it
+const arabic = Tajawal({ subsets: ["arabic"], weight: ["400", "500", "700", "800"], variable: "--font-ar", display: "swap", preload: false });
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE.url),
@@ -30,7 +33,12 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${display.variable} ${sans.variable} ${arabic.variable}`}>
+    // suppressHydrationWarning: the inline script below marks <html> before React takes over
+    <html lang="en" className={`${display.variable} ${sans.variable} ${arabic.variable}`} suppressHydrationWarning>
+      <head>
+        {/* lets the hero hide its words until the display font is in, then fade them up together */}
+        <script dangerouslySetInnerHTML={{ __html: "document.documentElement.setAttribute('data-js','')" }} />
+      </head>
       <body>{children}</body>
     </html>
   );
